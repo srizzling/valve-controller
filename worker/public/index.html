@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Valve controller</title>
+<style>
+  :root { color-scheme: light dark; --accent: #0a7cff; --bad: #d33; --muted: #8888; }
+  body { font: 16px/1.4 system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 1rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 1rem; }
+  h2 { font-size: 1rem; margin: 1.5rem 0 .5rem; text-transform: uppercase; letter-spacing: .05em; color: gray; }
+  .card { border: 1px solid var(--muted); border-radius: .6rem; padding: 1rem; }
+  .big { font-size: 1.6rem; font-weight: 600; }
+  button { font: inherit; padding: .5rem 1rem; border-radius: .4rem; border: 1px solid var(--muted); background: none; color: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  button.danger { background: var(--bad); border-color: var(--bad); color: white; }
+  label { display: block; margin: .5rem 0; }
+  input[type=number], input[type=time], input[type=password] { font: inherit; padding: .3rem; width: 5.5rem; }
+  input[type=password] { width: 100%; box-sizing: border-box; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .days label { display: inline; margin-right: .4rem; font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  td { padding: .3rem .2rem; border-top: 1px solid var(--muted); }
+  #msg { min-height: 1.4rem; margin: .5rem 0; }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+<h1>Valve controller</h1>
+
+<div id="login" class="card" hidden>
+  <label>Access token <input id="token" type="password" autocomplete="current-password"></label>
+  <button class="primary" id="save-token">Sign in</button>
+</div>
+
+<div id="app" hidden>
+  <div class="card">
+    <div class="big" id="phase">…</div>
+    <div id="detail"></div>
+    <div class="row" style="margin-top:.8rem">
+      <button class="primary" id="start">Start now</button>
+      <button class="danger" id="stop">Stop</button>
+    </div>
+  </div>
+  <div id="msg"></div>
+
+  <h2>Cycle</h2>
+  <form id="config" class="card">
+    <label><input type="checkbox" id="enabled"> Scheduled runs enabled</label>
+    <label>Water for <input type="number" id="onMinutes" min="0.1" step="any"> min</label>
+    <label>Soak for <input type="number" id="soakMinutes" min="0" step="any"> min</label>
+    <label>Repeat <input type="number" id="cycles" min="1" max="20"> times</label>
+
+    <h2>Start times</h2>
+    <div id="schedules"></div>
+    <button type="button" id="add-schedule">Add start time</button>
+
+    <h2>Rain</h2>
+    <label><input type="checkbox" id="rainEnabled"> Skip scheduled runs when rain is forecast</label>
+    <label>Look ahead <input type="number" id="lookaheadHours" min="1" max="48"> hours</label>
+    <label>Skip at <input type="number" id="probabilityPct" min="0" max="100"> % chance of rain</label>
+    <label>or <input type="number" id="mm" min="0" step="any"> mm expected (0 = ignore)</label>
+    <div class="row"><button class="primary" type="submit">Save</button><button type="button" id="check-rain">Check rain now</button></div>
+  </form>
+
+  <h2>History</h2>
+  <table id="history"></table>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+let status = null;
+let schedules = [];
+let skew = 0; // server clock minus browser clock, so countdowns survive a wrong local clock
+
+async function api(path, options = {}) {
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${localStorage.token ?? ""}`, "content-type": "application/json" },
+  });
+  if (res.status === 401) { showLogin(); throw new Error("Not signed in"); }
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.message ?? res.statusText);
+  return body;
+}
+
+function showLogin() { $("login").hidden = false; $("app").hidden = true; }
+function say(text, isError = false) { const m = $("msg"); m.textContent = text; m.className = isError ? "error" : ""; }
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+function renderSchedules() {
+  const box = $("schedules");
+  box.replaceChildren();
+  schedules.forEach((s, i) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const time = Object.assign(document.createElement("input"), { type: "time", value: s.time });
+    time.onchange = () => (s.time = time.value);
+    const days = document.createElement("span");
+    days.className = "days";
+    DAYS.forEach((name, d) => {
+      const label = document.createElement("label");
+      const cb = Object.assign(document.createElement("input"), { type: "checkbox", checked: s.days.includes(d) });
+      cb.onchange = () => (s.days = cb.checked ? [...s.days, d] : s.days.filter((x) => x !== d));
+      label.append(cb, ` ${name}`);
+      days.append(label);
+    });
+    const del = Object.assign(document.createElement("button"), { type: "button", textContent: "Remove" });
+    del.onclick = () => { schedules.splice(i, 1); renderSchedules(); };
+    row.append(time, days, del);
+    box.append(row);
+  });
+}
+
+function fillForm(c) {
+  $("enabled").checked = c.enabled;
+  $("onMinutes").value = c.onMinutes;
+  $("soakMinutes").value = c.soakMinutes;
+  $("cycles").value = c.cycles;
+  $("rainEnabled").checked = c.rain.enabled;
+  $("lookaheadHours").value = c.rain.lookaheadHours;
+  $("probabilityPct").value = c.rain.probabilityPct;
+  $("mm").value = c.rain.mm;
+  schedules = structuredClone(c.schedules);
+  renderSchedules();
+}
+
+function renderStatus() {
+  const { state } = status;
+  const left = Math.max(0, (state.phaseEndsAt - Date.now() - skew) / 1000);
+  if (state.phase === "idle") {
+    $("phase").textContent = "Idle";
+    $("detail").textContent = "";
+  } else {
+    $("phase").textContent = state.phase === "watering" ? "Watering" : "Soaking";
+    $("detail").textContent = `Cycle ${state.cycle} of ${state.cycles}, ${fmt(left)} left in this phase`;
+  }
+  $("start").disabled = state.phase !== "idle";
+}
+
+function renderHistory() {
+  const table = $("history");
+  table.replaceChildren();
+  for (const h of status.history) {
+    const tr = table.insertRow();
+    tr.insertCell().textContent = new Date(h.at).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+    tr.insertCell().textContent = h.outcome;
+    tr.insertCell().textContent = h.outcome === "skipped-rain" || h.outcome === "error" ? h.note : `${Math.round(h.wateredSeconds / 60)} min, ${h.trigger}`;
+  }
+}
+
+async function refresh(withForm = false) {
+  status = await api("/status");
+  skew = status.now - Date.now();
+  $("login").hidden = true; $("app").hidden = false;
+  if (withForm) fillForm(status.config);
+  renderStatus(); renderHistory();
+}
+
+$("save-token").onclick = async () => { localStorage.token = $("token").value; await refresh(true).catch((e) => say(e.message, true)); };
+$("start").onclick = () => api("/start", { method: "POST" }).then((r) => say(r.message)).catch((e) => say(e.message, true)).then(() => refresh());
+$("stop").onclick = () => api("/stop", { method: "POST" }).then((r) => say(r.message, !r.ok)).catch((e) => say(e.message, true)).then(() => refresh());
+$("add-schedule").onclick = () => { schedules.push({ days: [0, 1, 2, 3, 4, 5, 6], time: "06:00" }); renderSchedules(); };
+$("check-rain").onclick = () => api("/rain").then((r) => say(`${r.skip ? "Would skip" : "Would water"}: ${r.reason}`)).catch((e) => say(e.message, true));
+$("config").onsubmit = async (e) => {
+  e.preventDefault();
+  const n = (id) => Number($(id).value);
+  const config = {
+    enabled: $("enabled").checked, onMinutes: n("onMinutes"), soakMinutes: n("soakMinutes"), cycles: n("cycles"), schedules,
+    rain: { enabled: $("rainEnabled").checked, lookaheadHours: n("lookaheadHours"), probabilityPct: n("probabilityPct"), mm: n("mm") },
+  };
+  try { fillForm(await api("/config", { method: "PUT", body: JSON.stringify(config) })); say("Saved"); } catch (err) { say(err.message, true); }
+};
+
+if (localStorage.token) refresh(true).catch(() => showLogin()); else showLogin();
+setInterval(() => status && refresh().catch(() => {}), 5000);
+setInterval(() => status && renderStatus(), 1000);
+</script>
+</body>
+</html>

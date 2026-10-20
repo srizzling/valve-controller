@@ -1,0 +1,14 @@
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    # tinytuya talks to the valve over the LAN; the container only needs outbound access.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on: [agent]

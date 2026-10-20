@@ -1,0 +1,29 @@
+{
+  "name": "valve-controller",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "public",
+    "run_worker_first": ["/api/*", "/oauth/*", "/google/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CONTROLLER", "class_name": "Controller" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Controller"] }],
+  // Check the schedule every minute; the Durable Object decides whether anything is due.
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    // Public hostname of the Cloudflare Tunnel that fronts the homelab agent
+    "AGENT_URL": "https://valve-agent.example.com",
+    // Used for schedule times and the rain forecast. Change these to your garden.
+    "TIMEZONE": "Australia/Melbourne",
+    "LATITUDE": "-37.81",
+    "LONGITUDE": "144.96",
+    "NTFY_URL": "https://ntfy.sh",
+    "NTFY_TOPIC": "change-me-valve-topic",
+    // Google Cloud project id for the Smart Home Action (only needed for Google Home)
+    "GOOGLE_PROJECT_ID": ""
+  }
+  // Secrets (wrangler secret put ...): API_TOKEN, AGENT_TOKEN, SIGNING_KEY,
+  // and optionally NTFY_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+}

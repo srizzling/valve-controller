@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `wrangler dev`. Production values are set with `wrangler secret put`.
+API_TOKEN=local-api-token
+AGENT_TOKEN=local-agent-token
+SIGNING_KEY=local-signing-key
+AGENT_URL=http://127.0.0.1:8080
