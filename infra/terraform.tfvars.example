@@ -1,0 +1,22 @@
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+zone_name             = "example.com"
+app_hostname          = "valve.example.com"
+agent_hostname        = "valve-agent.example.com"
+access_team_domain    = "yourteam.cloudflareaccess.com"
+allowed_emails        = ["you@example.com"]
+
+timezone  = "Australia/Melbourne"
+latitude  = "-37.81"
+longitude = "144.96"
+
+# healthchecks_api_key: set TF_VAR_healthchecks_api_key in your environment
+healthchecks_channel_kinds = ["email"]
+
+# Optional: run the agent from Terraform on the homelab Docker host
+# docker_host    = "ssh://you@bowser"
+# tuya_device_id = "..."
+# tuya_ip        = "192.168.1.50"
+# tuya_local_key: set TF_VAR_tuya_local_key in your environment
+
+# Optional: Google Home
+# google_project_id = "my-valve-project"

@@ -51,7 +51,47 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 - If the agent can't be reached when a phase changes, it retries twice (30s apart), then aborts the run, tries to
   close the valve and sends a high-priority ntfy.
 
-## Setup
+## Infrastructure as code (Terraform)
+
+`infra/` creates everything on Cloudflare and healthchecks.io, and optionally runs the agent on the homelab:
+
+| Managed by Terraform | Resource |
+| --- | --- |
+| Worker, assets, bindings, secrets, Durable Object | `cloudflare_worker`, `_worker_version`, `_workers_deployment` |
+| Schedule check every minute | `cloudflare_workers_cron_trigger` |
+| UI hostname, workers.dev switched off | `cloudflare_workers_custom_domain`, `_workers_script_subdomain` |
+| Login in front of the UI, bypass for Google paths | `cloudflare_zero_trust_access_application` (two) |
+| Tunnel to the agent, its route and DNS | `cloudflare_zero_trust_tunnel_cloudflared`, `_config`, `cloudflare_dns_record` |
+| Missed-run alert | `healthchecksio_check` |
+| Agent and cloudflared containers on the homelab (optional) | `docker_container` over SSH |
+| Every token, key and the ntfy topic name | `random_*`, read back with `terraform output` |
+
+```sh
+cd infra
+cp terraform.tfvars.example terraform.tfvars        # fill in your account, zone, hostnames, email
+export CLOUDFLARE_API_TOKEN=...                      # see versions.tf for the permissions it needs
+export TF_VAR_healthchecks_api_key=...
+export TF_VAR_tuya_local_key=...                     # only if docker_host is set
+make init && make apply                              # builds the Worker bundle, then applies
+```
+
+`make` uses `terraform`; run `make apply TF=tofu` for OpenTofu. Both work.
+
+Still manual, because there is no API for them:
+
+- Creating the Cloudflare API token, the Zero Trust organisation (for the team domain), and the healthchecks.io account
+  and its ntfy or email integration.
+- Getting the Tuya local key (`python -m tinytuya wizard`).
+- The Google Home developer console project. `terraform output google_home` prints every value to paste into it.
+- Subscribing to the ntfy topic (`terraform output ntfy_topic`).
+
+Terraform is the source of truth for the Worker's variables and secrets. `worker/wrangler.jsonc` is only used for
+`wrangler dev` and for building the bundle, so do not `wrangler deploy` as well: it would replace what Terraform set.
+The state file holds every secret. Keep it private, or use the encrypted backend sketched in `infra/versions.tf`.
+
+## Setup by hand
+
+The steps below do the same things without Terraform.
 
 ### 1. Agent (homelab)
 
