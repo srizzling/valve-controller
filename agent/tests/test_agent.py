@@ -69,6 +69,33 @@ def test_auto_close_fires(device):
     assert not device.on
 
 
+def test_auto_close_alerts_owner(device):
+    alerts = []
+    valve = Valve(device, alert=lambda title, message: alerts.append(title))
+    valve.open(1)
+    time.sleep(1.4)
+    assert alerts == ["Valve: closed by agent timer"]
+
+
+def test_explicit_close_does_not_alert(device):
+    alerts = []
+    valve = Valve(device, alert=lambda title, message: alerts.append(title))
+    valve.open(1)
+    valve.close()
+    time.sleep(1.4)
+    assert alerts == []
+
+
+def test_failed_auto_close_alerts_loudly(device):
+    alerts = []
+    valve = Valve(device, alert=lambda title, message: alerts.append(title))
+    valve.open(1)
+    device.fail = True
+    time.sleep(1.4)
+    assert alerts == ["Valve: FAILED to close"]
+    valve._disarm()
+
+
 def test_device_error_is_502(client, device):
     device.fail = True
     assert client.post("/valve/open", json={"seconds": 5}, headers=AUTH).status_code == 502

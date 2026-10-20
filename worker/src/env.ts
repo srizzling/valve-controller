@@ -10,6 +10,7 @@ export interface Env {
   NTFY_URL: string;
   NTFY_TOPIC: string;
   NTFY_TOKEN?: string;
+  HEALTHCHECK_URL?: string; // healthchecks.io ping URL (secret)
   // Cloudflare Access (protects the UI and /api)
   ACCESS_TEAM_DOMAIN?: string; // e.g. yourteam.cloudflareaccess.com
   ACCESS_AUD?: string; // the Access application's Audience tag

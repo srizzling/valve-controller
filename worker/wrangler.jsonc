@@ -28,5 +28,5 @@
     "ACCESS_AUD": ""
   }
   // Secrets (wrangler secret put ...): LINK_PASSWORD, AGENT_TOKEN, SIGNING_KEY,
-  // and optionally NTFY_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+  // and optionally HEALTHCHECK_URL, NTFY_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 }

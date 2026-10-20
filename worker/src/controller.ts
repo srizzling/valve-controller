@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { closeValve, openValve } from "./agent";
+import { closeValve, openValve, valveStatus } from "./agent";
 import type { Env } from "./env";
+import { ping } from "./heartbeat";
+import type { Signal } from "./heartbeat";
 import { notify } from "./ntfy";
 import { advance, defaultConfig, dueSchedule, idleState, startRun, wateredSoFar } from "./plan";
 import type { Config, RunState, Trigger } from "./plan";
@@ -24,6 +26,7 @@ export interface Status {
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 30_000;
 const HISTORY_LIMIT = 20;
+const PREFLIGHT_LEAD_MS = 10 * 60_000; // check the agent and valve this long before a scheduled start
 
 const mins = (seconds: number) => `${Math.round((seconds / 60) * 10) / 10} min`;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -80,6 +83,7 @@ export class Controller extends DurableObject<Env> {
         const watered = wateredSoFar(state, now);
         await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "stopped", wateredSeconds: watered, note });
         if (ok) await notify(this.env, { title: "Valve: stopped", message: `Stopped after ${mins(watered)} of watering.`, tags: ["octagonal_sign"] });
+        await this.heartbeat(state.trigger, "ok", note); // stopped on purpose, so not a missing run
       }
       return { ok, message: note };
     });
@@ -95,7 +99,13 @@ export class Controller extends DurableObject<Env> {
         if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Math.max(now, state.phaseEndsAt));
         return;
       }
-      const key = dueSchedule(await this.getConfig(), now, this.env.TIMEZONE);
+      const config = await this.getConfig();
+      const upcoming = dueSchedule(config, now + PREFLIGHT_LEAD_MS, this.env.TIMEZONE);
+      if (upcoming && (await this.ctx.storage.get("lastPreflightKey")) !== upcoming) {
+        await this.ctx.storage.put("lastPreflightKey", upcoming);
+        await this.preflight(upcoming.slice(-5));
+      }
+      const key = dueSchedule(config, now, this.env.TIMEZONE);
       if (!key || (await this.ctx.storage.get("lastScheduleKey")) === key) return;
       await this.ctx.storage.put("lastScheduleKey", key);
       await this.doStart("schedule");
@@ -125,7 +135,9 @@ export class Controller extends DurableObject<Env> {
         await this.ctx.storage.put("state", idleState);
         const watered = step.next.wateredSeconds;
         await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "completed", wateredSeconds: watered, note: `${state.cycles} cycles` });
-        await notify(this.env, { title: "Valve: finished", message: `Watered ${mins(watered)} over ${state.cycles} cycles.`, tags: ["white_check_mark"] });
+        const summary = `Watered ${mins(watered)} over ${state.cycles} cycles.`;
+        await notify(this.env, { title: "Valve: finished", message: summary, tags: ["white_check_mark"] });
+        await this.heartbeat(state.trigger, "ok", summary);
         return;
       }
       await this.ctx.storage.put("state", step.next);
@@ -146,6 +158,7 @@ export class Controller extends DurableObject<Env> {
         if (verdict.skip) {
           await this.record({ at: now, trigger, outcome: "skipped-rain", wateredSeconds: 0, note: verdict.reason });
           await notify(this.env, { title: "Valve: skipped for rain", message: `Scheduled run skipped. ${verdict.reason}.`, tags: ["cloud_with_rain"] });
+          await this.heartbeat(trigger, "ok", `skipped for rain: ${verdict.reason}`);
           return { ok: true, message: `skipped: ${verdict.reason}` };
         }
         rainNote = ` Forecast: ${verdict.reason}.`;
@@ -162,12 +175,14 @@ export class Controller extends DurableObject<Env> {
       const note = `could not open the valve: ${message(e)}`;
       await this.record({ at: now, trigger, outcome: "error", wateredSeconds: 0, note });
       await notify(this.env, { title: "Valve: failed to start", message: note, tags: ["rotating_light"], priority: 5 });
+      await this.heartbeat(trigger, "fail", note);
       return { ok: false, message: note };
     }
     await this.ctx.storage.put("state", run);
     await this.ctx.storage.setAlarm(run.phaseEndsAt);
     const plan = `${run.cycles} x ${mins(run.onSeconds)} on, ${mins(run.soakSeconds)} soak between.`;
     await notify(this.env, { title: "Valve: started", message: `${trigger} run. ${plan}${rainNote}`, tags: ["droplet"] });
+    await this.heartbeat(trigger, "start", plan);
     return { ok: true, message: `started: ${plan}` };
   }
 
@@ -176,6 +191,24 @@ export class Controller extends DurableObject<Env> {
     await this.ctx.storage.put("state", idleState);
     await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "error", wateredSeconds: wateredSoFar(state, Date.now()), note });
     await notify(this.env, { title: "Valve: run aborted", message: note, tags: ["rotating_light"], priority: 5 });
+    await this.heartbeat(state.trigger, "fail", note);
+  }
+
+  /** Only scheduled runs report to healthchecks.io: it exists to notice a schedule that stopped firing. */
+  private async heartbeat(trigger: Trigger, signal: Signal, body: string): Promise<void> {
+    if (trigger === "schedule") await ping(this.env, signal, body);
+  }
+
+  /** Shortly before a scheduled start: is the agent reachable, and is the valve unexpectedly open? */
+  private async preflight(at: string): Promise<void> {
+    try {
+      const status = (await valveStatus(this.env)) as { open?: boolean };
+      if (status.open) {
+        await notify(this.env, { title: "Valve: open while idle", message: `The valve is open but no run is active (next run ${at}). Something left it on.`, tags: ["rotating_light"], priority: 5 });
+      }
+    } catch (e) {
+      await notify(this.env, { title: "Valve: agent unreachable", message: `The ${at} run is 10 minutes away but the valve agent did not answer: ${message(e)}`, tags: ["warning"], priority: 4 });
+    }
   }
 
   private async record(entry: HistoryEntry): Promise<void> {

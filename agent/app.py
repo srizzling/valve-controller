@@ -6,6 +6,7 @@ import os
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+import notify
 from valve import Valve, ValveError
 
 log = logging.getLogger("agent")
@@ -66,10 +67,12 @@ def create_app_from_env() -> FastAPI:
     valve = Valve(
         device,
         dp=int(os.environ.get("TUYA_DP", "1")),
-        max_on_seconds=int(os.environ.get("MAX_ON_SECONDS", "1800")),
+        max_on_seconds=int(os.environ.get("MAX_ON_SECONDS", "3900")),
+        alert=lambda title, message: notify.send(title, message, priority=5, tags="rotating_light"),
     )
     try:
         valve.close()  # an agent restart mid-run must not leave water running
     except ValveError as e:
         log.error("could not close valve at startup: %s", e)
+        notify.send("Valve: agent cannot reach valve", f"The agent started but could not close the valve: {e}", priority=4)
     return create_app(valve, os.environ["AGENT_TOKEN"])

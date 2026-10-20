@@ -97,6 +97,31 @@ Smart Home Actions are free for personal use and don't need review while the pro
 
 The valve appears as a sprinkler called "Garden water": "turn on / off the garden water" or "start / stop".
 
+### Alerts
+
+ntfy messages tell you what happened. These three catch what didn't:
+
+| Alert | Where | Fires when |
+| --- | --- | --- |
+| Missed run | healthchecks.io | a scheduled run does not report in, so the schedule, Worker or Cloudflare is down |
+| Agent unreachable | ntfy, 10 min before each scheduled start | the agent or tunnel does not answer, so you find out before the garden is dry |
+| Open while idle | ntfy, same preflight | the valve is open with no run active |
+| Closed by agent timer | ntfy from the agent | the failsafe had to close the valve because the Worker never did |
+| Failed to close | ntfy from the agent, priority 5 | the failsafe tried and could not close the valve |
+
+Set up healthchecks.io:
+
+1. Create a check. Set the **period** to 1 day and the **grace time** to a couple of hours, and add your ntfy
+   integration (healthchecks.io can post to ntfy) or email.
+2. `npx wrangler secret put HEALTHCHECK_URL` with the check's ping URL (`https://hc-ping.com/<uuid>`).
+
+Only **scheduled** runs report: `/start` when a run begins, a success ping when it finishes or is skipped for rain
+(that is a run that did its job), and `/fail` when it errors. A run that starts and never finishes shows up as a
+missed run too. If you switch scheduled runs off in the UI or go away, pause the check in healthchecks.io.
+
+To get the agent's own alerts set `NTFY_TOPIC` (and `NTFY_URL`) in `agent/.env`. `MAX_ON_SECONDS` must stay above your
+longest watering period plus 90 seconds, or the agent's failsafe will cut a run short and alert.
+
 ### Notifications
 
 Subscribe to your `NTFY_TOPIC` in the ntfy app. Pick a hard-to-guess topic on the public server, or set `NTFY_URL` to

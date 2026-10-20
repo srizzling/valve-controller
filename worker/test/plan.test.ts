@@ -99,3 +99,12 @@ describe("signed tokens", () => {
     expect(await verifyToken("k", t.slice(0, -2) + "xx", "access", 999)).toBeNull();
   });
 });
+
+describe("healthchecks urls", () => {
+  it("builds start/ok/fail urls and tolerates a trailing slash", async () => {
+    const { pingUrl } = await import("../src/heartbeat");
+    expect(pingUrl("https://hc-ping.com/abc", "ok")).toBe("https://hc-ping.com/abc");
+    expect(pingUrl("https://hc-ping.com/abc/", "start")).toBe("https://hc-ping.com/abc/start");
+    expect(pingUrl("https://hc-ping.com/abc", "fail")).toBe("https://hc-ping.com/abc/fail");
+  });
+});

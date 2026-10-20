@@ -6,7 +6,7 @@ tunnel) dies mid-run the valve still closes by itself.
 import logging
 import threading
 import time
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 log = logging.getLogger("valve")
 
@@ -21,8 +21,15 @@ class ValveError(RuntimeError):
 
 
 class Valve:
-    def __init__(self, device: Device, dp: int = 1, max_on_seconds: int = 1800):
+    def __init__(
+        self,
+        device: Device,
+        dp: int = 1,
+        max_on_seconds: int = 3900,
+        alert: Callable[[str, str], None] | None = None,
+    ):
         self._device = device
+        self._alert = alert or (lambda title, message: None)
         self._dp = dp
         self._max = max_on_seconds
         self._lock = threading.Lock()
@@ -74,12 +81,16 @@ class Valve:
         self._closes_at = None
 
     def _auto_close(self) -> None:
+        """The controller never sent a close, so tell the owner. Alerts go out after the lock is released."""
         with self._lock:
             self._timer = None
             self._closes_at = None
             try:
                 self._set(False)
-                log.warning("auto-close timer fired, valve closed")
+                alert = ("Valve: closed by agent timer", "The controller never sent a close, so the agent's failsafe shut the valve.")
             except ValveError as e:
                 log.error("auto-close failed (%s), retrying in 5s", e)
                 self._arm(5)
+                alert = ("Valve: FAILED to close", f"The failsafe could not close the valve ({e}). It may still be running. Retrying.")
+        log.warning("auto-close timer fired: %s", alert[0])
+        self._alert(*alert)
