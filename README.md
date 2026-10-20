@@ -35,7 +35,7 @@ An animated cartoon garden follows the controller, not the buttons you press:
   *forecast* on a sunny day only shows the "Rain delay active" notice and why.
 
 The weather card shows current conditions, rain now / last 24 h / next 24 h, chance of rain, humidity, wind, a 7-day
-rain outlook, and whether the next scheduled run will go ahead. Animations respect `prefers-reduced-motion`.
+rain outlook with a badge on each day showing whether it will water, skip for rain, or has no run (tap a day for the times and reasons), and whether the next scheduled run will go ahead. Future days use today's forecast and the same rain rule the controller applies when a run starts, so they can change as the forecast does. Animations respect `prefers-reduced-motion`.
 
 To preview every scene without a backend, serve `worker/public` and open `/?demo=idle`, `watering`, `soaking`,
 `rain`, `delay` (sunny with a rain delay), `cloudy` or `night`.

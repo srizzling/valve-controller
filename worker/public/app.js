@@ -10,6 +10,7 @@ let weather = null;
 let skew = 0; // server clock minus browser clock, so countdowns hold up with a wrong local clock
 let schedules = [];
 let busy = false;
+let selectedDay = null;
 
 /* ───────────────────────── scene construction ───────────────────────── */
 
@@ -128,6 +129,19 @@ function demoData(name) {
   const c = name === "rain" || name === "delay" ? rainy : name === "cloudy" ? grey : sunny;
   const days = ["2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27"];
   const rain = name === "rain" || name === "delay";
+  const at = (i) => now + (i * 24 + 8) * 3600000;
+  const run = (i, state, reason) => [{ at: at(i), state, reason }];
+  const dry = "5% chance, 0.0 mm in the next 6h";
+  const wet = "rain likely: 78% chance, 4.0 mm in the next 6h";
+  const demoRuns = [
+    () => run(0, rain ? "skip" : "will-run", rain ? wet : dry),
+    () => run(1, rain ? "skip" : "will-run", rain ? wet : dry),
+    () => run(2, "skip", wet),
+    () => [],
+    () => run(4, "will-run", dry),
+    () => run(5, "unknown", "the forecast does not reach this far yet"),
+    () => [],
+  ];
   return {
     status: { state, config, now, timezone: "Australia/Melbourne", nextRunAt: now + 8.2 * 3600000, history: [
       { at: now - 20 * 3600000, trigger: "schedule", outcome: "completed", wateredSeconds: 1800, note: "3 cycles" },
@@ -137,7 +151,7 @@ function demoData(name) {
       fetchedAt: now,
       current: { temperatureC: rain ? 12.6 : 21.4, feelsLikeC: rain ? 10.8 : 20.1, humidityPct: rain ? 88 : 54, windKmh: rain ? 24 : 11, cloudCoverPct: rain ? 100 : 15, rainLastHourMm: rain ? 2.4 : 0, isDay: name !== "night", isRaining: name === "rain", condition: name === "night" ? cond("Clear", "clear", "🌙") : name === "delay" ? sunny : c },
       past24hMm: rain ? 8.4 : 0.6, next24hMm: rain ? 11.2 : 0.4, rainChanceNext24hPct: rain ? 85 : 20,
-      daily: days.map((date, i) => ({ date, condition: i === 1 && rain ? rainy : i === 3 ? grey : sunny, tMaxC: 22 - i, tMinC: 11 + (i % 3), rainMm: [0.4, rain ? 11.2 : 0.2, 3.1, 0, 0, 6.5, 1.2][i], chancePct: [20, rain ? 85 : 15, 55, 5, 0, 70, 30][i] })),
+      daily: days.map((date, i) => ({ runs: demoRuns[i](date), date, condition: i === 1 && rain ? rainy : i === 3 ? grey : sunny, tMaxC: 22 - i, tMinC: 11 + (i % 3), rainMm: [0.4, rain ? 11.2 : 0.2, 3.1, 0, 0, 6.5, 1.2][i], chancePct: [20, rain ? 85 : 15, 55, 5, 0, 70, 30][i] })),
       nextRun: { at: now + 8.2 * 3600000, verdict: rain ? { skip: true, reason: "rain likely: 85% chance, 6.2 mm in the next 6h" } : { skip: false, reason: "20% chance, 0.2 mm in the next 6h" } },
     },
   };
@@ -260,6 +274,28 @@ function renderButtons() {
   $("start").textContent = busy ? "Starting…" : "Water now";
 }
 
+const RUN_ICON = { "will-run": "💧", skip: "⏸️", unknown: "❔", done: "✅", "skipped-earlier": "⏸️", failed: "⚠️", "no-record": "❔" };
+const RUN_TEXT = { "will-run": "will water", skip: "will skip for rain", unknown: "not forecast yet", done: "watered", "skipped-earlier": "skipped for rain", failed: "failed", "no-record": "no record" };
+
+/** One badge per day: do we water, skip, or have nothing scheduled? */
+function waterBadge(runs) {
+  if (!runs?.length) return { cls: "none", icon: "·", short: "No run", text: "nothing scheduled" };
+  const watering = runs.filter((r) => r.state === "will-run" || r.state === "done");
+  const skipping = runs.filter((r) => r.state === "skip" || r.state === "skipped-earlier");
+  const n = runs.length;
+  if (watering.length === n) return { cls: "waters", icon: runs[0].state === "done" ? "✅" : "💧", short: runs[0].state === "done" ? "Done" : "Waters", text: `waters${n > 1 ? ` ${n} times` : ""}` };
+  if (skipping.length === n) return { cls: "skips", icon: "⏸️", short: "Skips", text: "skipped for rain" };
+  if (watering.length && skipping.length) return { cls: "waters", icon: "💧", short: `${watering.length} of ${n}`, text: `${watering.length} of ${n} runs water` };
+  const first = runs[0];
+  return { cls: "unsure", icon: RUN_ICON[first.state], short: first.state === "failed" ? "Failed" : "Maybe", text: RUN_TEXT[first.state] };
+}
+
+function dayDetail(d, i) {
+  const label = i === 0 ? "Today" : new Intl.DateTimeFormat([], { weekday: "long", timeZone: "UTC" }).format(new Date(`${d.date}T12:00:00Z`));
+  if (!d.runs?.length) return `<b>${label}:</b> nothing is scheduled.`;
+  return `<b>${label}:</b> ` + d.runs.map((r) => `${esc(when(r.at))} ${RUN_ICON[r.state]} ${RUN_TEXT[r.state]}${r.reason ? ` <span class="muted">(${esc(r.reason)})</span>` : ""}`).join("<br>");
+}
+
 function renderWeather() {
   const box = $("wx-body");
   if (!weather) return;
@@ -274,8 +310,10 @@ function renderWeather() {
   }
   const week = weather.daily.map((d, i) => {
     const label = i === 0 ? "Today" : new Intl.DateTimeFormat([], { weekday: "short", timeZone: "UTC" }).format(new Date(`${d.date}T12:00:00Z`));
-    return `<div class="day"><div class="d">${label}</div><div class="i" title="${d.condition.label}">${d.condition.icon}</div><div class="t">${d.tMaxC}° / ${d.tMinC}°</div>
-      <div class="bar" title="${mm(d.rainMm)}"><i style="height:${Math.min(100, (d.rainMm / maxMm) * 100)}%"></i></div><div class="mm">${d.rainMm >= 10 ? Math.round(d.rainMm) : d.rainMm}</div><div class="p">${d.chancePct}%</div></div>`;
+    const water = waterBadge(d.runs);
+    return `<button type="button" class="day ${water.cls}" data-i="${i}" aria-label="${esc(label)}: ${esc(water.text)}"><div class="d">${label}</div><div class="i" title="${d.condition.label}">${d.condition.icon}</div><div class="t">${d.tMaxC}° / ${d.tMinC}°</div>
+      <div class="bar" title="${mm(d.rainMm)}"><i style="height:${Math.min(100, (d.rainMm / maxMm) * 100)}%"></i></div><div class="mm">${d.rainMm >= 10 ? Math.round(d.rainMm) : d.rainMm}</div><div class="p">${d.chancePct}%</div>
+      <div class="water"><span class="wi">${water.icon}</span><span class="wl">${water.short}</span></div></button>`;
   }).join("");
   box.innerHTML = `
     <div class="wx-now"><div class="wx-icon">${c.condition.icon}</div><div><div class="wx-temp">${Math.round(c.temperatureC)}°</div><div class="wx-label">${c.condition.label}<span class="muted"> · feels ${Math.round(c.feelsLikeC)}°</span></div></div></div>
@@ -289,7 +327,17 @@ function renderWeather() {
     </div>
     ${verdictHtml}
     <h3>Next 7 days</h3>
-    <div class="week">${week}</div>`;
+    <div class="week">${week}</div>
+    <div class="legend"><span><i class="lg waters"></i>waters</span><span><i class="lg skips"></i>skipped for rain</span><span><i class="lg none"></i>no run</span></div>
+    <div id="day-detail" class="day-detail" aria-live="polite">Tap a day to see its runs.</div>`;
+  box.querySelectorAll(".day").forEach((btn) => {
+    btn.onclick = () => {
+      selectedDay = Number(btn.dataset.i);
+      box.querySelectorAll(".day").forEach((b) => b.classList.toggle("sel", b === btn));
+      $("day-detail").innerHTML = dayDetail(weather.daily[selectedDay], selectedDay);
+    };
+  });
+  if (selectedDay !== null && weather.daily[selectedDay]) box.querySelector(`.day[data-i="${selectedDay}"]`)?.click();
   $("wx-updated").textContent = weather.stale ? "showing older data" : `updated ${new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" }).format(weather.fetchedAt)}`;
   const chip = $("wx-chip");
   chip.hidden = false;

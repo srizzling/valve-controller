@@ -138,6 +138,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px 
 .verdict span { color: var(--muted); font-size: .88rem; }
 
 .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 14px; }
+button.day { font: inherit; color: inherit; cursor: pointer; }
 .day { text-align: center; background: #0f1a2c; border: 1px solid #1f2f4b; border-radius: 14px; padding: 8px 2px 9px; min-width: 0; }
 .day .d { font-size: .74rem; color: var(--muted); font-weight: 700; }
 .day .i { font-size: 1.3rem; margin: 2px 0; }
@@ -146,6 +147,21 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px 
 .bar i { display: block; width: 100%; background: linear-gradient(180deg, #7fe3ff, #2a9fd6); border-radius: 99px; min-height: 0; transition: height .6s; }
 .day .mm { font-size: .74rem; font-weight: 700; }
 .day .p { font-size: .68rem; color: var(--muted); }
+.day .water { margin-top: 7px; padding: 4px 0 3px; border-radius: 10px; font-size: .62rem; font-weight: 800; letter-spacing: .02em; line-height: 1.15; }
+.day .wi { display: block; font-size: .95rem; }
+.day.waters { border-color: #2f7d4f; background: linear-gradient(180deg, #14301f, #0f1a2c 60%); }
+.day.waters .water { background: #1d4a31; color: #bff0cf; }
+.day.skips { border-color: #3d5385; background: linear-gradient(180deg, #1b2644, #0f1a2c 60%); }
+.day.skips .water { background: #26365f; color: #cddaf5; }
+.day.none { opacity: .75; }
+.day.none .water { color: var(--muted); font-weight: 600; }
+.day.unsure .water { background: #2b2a1f; color: #e7dca4; }
+.day.sel { outline: 2px solid #8fd8ff; outline-offset: 1px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: .75rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.lg { width: 10px; height: 10px; border-radius: 3px; border: 1px solid; display: inline-block; }
+.lg.waters { background: #1d4a31; border-color: #2f7d4f; } .lg.skips { background: #26365f; border-color: #3d5385; } .lg.none { background: transparent; border-color: #3a4a68; }
+.day-detail { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #0f1a2c; border: 1px solid #1f2f4b; font-size: .88rem; }
 
 /* ───── settings ───── */
 .settings { padding: 0 !important; }

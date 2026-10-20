@@ -7,6 +7,7 @@ import { googleRoutes } from "./google";
 import { validateConfig } from "./plan";
 import { fetchForecast, rainVerdict } from "./rain";
 import type { RainVerdict } from "./rain";
+import { plannedRuns } from "./outlook";
 import { getWeather } from "./weather";
 
 export { Controller };
@@ -49,7 +50,9 @@ api.get("/weather", async (c) => {
         }
       }
     }
-    return c.json({ ...data, nextRun });
+    const now = Date.now();
+    const daily = data.daily.map((d) => ({ ...d, runs: plannedRuns(status.config, d.date, forecast, status.history, now, c.env.TIMEZONE) }));
+    return c.json({ ...data, daily, nextRun });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "weather unavailable" }, 502);
   }

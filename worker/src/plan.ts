@@ -161,7 +161,7 @@ function tzOffsetMs(ts: number, timeZone: string): number {
   return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second")) - Math.floor(ts / 1000) * 1000;
 }
 
-function localToUtc(y: number, m: number, d: number, hh: number, mm: number, timeZone: string): number {
+export function localToUtc(y: number, m: number, d: number, hh: number, mm: number, timeZone: string): number {
   const guess = Date.UTC(y, m, d, hh, mm);
   const off = tzOffsetMs(guess, timeZone);
   let utc = guess - off;
@@ -185,4 +185,18 @@ export function nextRunAt(config: Config, now: number, timeZone: string): number
     }
   }
   return best;
+}
+
+/** Every scheduled start (epoch ms) on a local calendar date "YYYY-MM-DD", earliest first. */
+export function scheduledRunsOn(config: Config, date: string, timeZone: string): number[] {
+  if (!config.enabled) return [];
+  const [y, m, d] = date.split("-").map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return config.schedules
+    .filter((s) => s.days.includes(weekday))
+    .map((s) => {
+      const [hh, mm] = s.time.split(":").map(Number);
+      return localToUtc(y, m - 1, d, hh, mm, timeZone);
+    })
+    .sort((a, b) => a - b);
 }
