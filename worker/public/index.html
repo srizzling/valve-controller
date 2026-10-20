@@ -2,175 +2,239 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Valve controller</title>
-<style>
-  :root { color-scheme: light dark; --accent: #0a7cff; --bad: #d33; --muted: #8888; }
-  body { font: 16px/1.4 system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 1rem; }
-  h1 { font-size: 1.3rem; margin: 0 0 1rem; }
-  h2 { font-size: 1rem; margin: 1.5rem 0 .5rem; text-transform: uppercase; letter-spacing: .05em; color: gray; }
-  .card { border: 1px solid var(--muted); border-radius: .6rem; padding: 1rem; }
-  .big { font-size: 1.6rem; font-weight: 600; }
-  button { font: inherit; padding: .5rem 1rem; border-radius: .4rem; border: 1px solid var(--muted); background: none; color: inherit; cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
-  button.danger { background: var(--bad); border-color: var(--bad); color: white; }
-  label { display: block; margin: .5rem 0; }
-  input[type=number], input[type=time], input[type=password] { font: inherit; padding: .3rem; width: 5.5rem; }
-  input[type=password] { width: 100%; box-sizing: border-box; }
-  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  .days label { display: inline; margin-right: .4rem; font-size: .9rem; }
-  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-  td { padding: .3rem .2rem; border-top: 1px solid var(--muted); }
-  #msg { min-height: 1.4rem; margin: .5rem 0; }
-  .error { color: var(--bad); }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b1220">
+<title>Garden</title>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<h1>Valve controller</h1>
+<header class="top">
+  <div class="brand"><span class="brand-flower" aria-hidden="true">🌻</span> Garden</div>
+  <div id="conn" class="conn" role="status">Connecting…</div>
+</header>
 
-<div id="app">
-  <div class="card">
-    <div class="big" id="phase">…</div>
-    <div id="detail"></div>
-    <div class="row" style="margin-top:.8rem">
-      <button class="primary" id="start">Start now</button>
-      <button class="danger" id="stop">Stop</button>
+<main class="layout">
+  <!-- ───────────── Hero: the animated irrigation preview ───────────── -->
+  <section class="hero card" aria-label="Irrigation preview">
+    <div class="stage">
+      <svg id="scene" class="scene" viewBox="0 0 400 440" preserveAspectRatio="xMidYMid slice" role="img"
+           aria-label="A cheerful sunflower in a sunny garden"
+           data-valve="idle" data-sky="clear" data-night="off" data-rain="off" data-wet="off">
+        <defs>
+          <linearGradient id="gSkyDay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a96ff"/><stop offset="1" stop-color="#c3ecff"/></linearGradient>
+          <linearGradient id="gSkyNight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a1130"/><stop offset="1" stop-color="#2d3d80"/></linearGradient>
+          <linearGradient id="gOvercast" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b6b86"/><stop offset="1" stop-color="#a9b8cb"/></linearGradient>
+          <linearGradient id="gStorm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b364d"/><stop offset="1" stop-color="#65748e"/></linearGradient>
+          <linearGradient id="gSoil" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7d5334"/><stop offset=".55" stop-color="#553724"/><stop offset="1" stop-color="#3a2519"/></linearGradient>
+          <radialGradient id="gMoist" cx=".5" cy=".28" r=".75"><stop offset="0" stop-color="#2fc4ff" stop-opacity=".85"/><stop offset=".6" stop-color="#1590d6" stop-opacity=".5"/><stop offset="1" stop-color="#0b5fa8" stop-opacity=".25"/></radialGradient>
+          <radialGradient id="gDisc" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#c58a45"/><stop offset="1" stop-color="#5a3213"/></radialGradient>
+          <radialGradient id="gSun"><stop offset="0" stop-color="#fff3a8" stop-opacity=".9"/><stop offset="1" stop-color="#ffd23f" stop-opacity="0"/></radialGradient>
+          <linearGradient id="gCan" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#52d6c4"/><stop offset=".55" stop-color="#2fb5a5"/><stop offset="1" stop-color="#23988b"/></linearGradient>
+          <clipPath id="rainClip"><rect x="-100" y="0" width="600" height="274"/></clipPath>
+          <clipPath id="soilClip"><rect x="-100" y="270" width="600" height="200"/></clipPath>
+          <g id="cloud"><ellipse cx="0" cy="8" rx="46" ry="15"/><circle cx="-22" cy="-2" r="17"/><circle cx="4" cy="-10" r="23"/><circle cx="30" cy="0" r="15"/></g>
+          <path id="drop" d="M0 -6 C3.5 -1.5 5 2 0 5 C-5 2 -3.5 -1.5 0 -6Z"/>
+        </defs>
+
+        <g class="cam" id="cam">
+          <!-- sky -->
+          <rect x="-100" y="-100" width="600" height="420" fill="url(#gSkyDay)"/>
+          <rect class="fade sky-night" x="-100" y="-100" width="600" height="420" fill="url(#gSkyNight)"/>
+          <rect class="fade sky-overcast" x="-100" y="-100" width="600" height="420" fill="url(#gOvercast)"/>
+          <rect class="fade sky-storm" x="-100" y="-100" width="600" height="420" fill="url(#gStorm)"/>
+          <rect class="fade sky-dim" x="-100" y="-100" width="600" height="420" fill="#050a1e"/>
+          <g class="fade stars" id="stars"></g>
+
+          <g class="fade sun" transform="translate(80 112)">
+            <circle r="62" fill="url(#gSun)"/>
+            <g class="rays" id="rays"></g>
+            <circle r="27" fill="#ffd23f" stroke="#ffb300" stroke-width="3"/>
+            <circle cx="-9" cy="-3" r="2.6" fill="#7a3d00"/><circle cx="9" cy="-3" r="2.6" fill="#7a3d00"/>
+            <path d="M-9 7 Q0 15 9 7" fill="none" stroke="#7a3d00" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="-16" cy="5" r="4" fill="#ff9a6b" opacity=".55"/><circle cx="16" cy="5" r="4" fill="#ff9a6b" opacity=".55"/>
+          </g>
+          <g class="fade moon" transform="translate(80 112)">
+            <circle r="46" fill="#cfe0ff" opacity=".12"/>
+            <path d="M4 -26 A26 26 0 1 0 4 26 A20 20 0 1 1 4 -26Z" fill="#fff1bd" stroke="#f3d77a" stroke-width="2"/>
+            <circle cx="-8" cy="-2" r="2" fill="#7a6420"/><path d="M-12 9 Q-6 13 0 9" fill="none" stroke="#7a6420" stroke-width="2" stroke-linecap="round"/>
+          </g>
+
+          <!-- drifting clouds -->
+          <g class="clouds">
+            <g transform="translate(0 52)"><use href="#cloud" class="cloud drift d1"/></g>
+            <g transform="translate(0 112) scale(.75)"><use href="#cloud" class="cloud drift d2"/></g>
+            <g transform="translate(0 28) scale(.55)"><use href="#cloud" class="cloud drift d3"/></g>
+          </g>
+          <g class="fade bank">
+            <g class="bank-sway"><g transform="translate(40 34) scale(1.6)"><use href="#cloud" class="bank-cloud"/></g>
+            <g transform="translate(150 22) scale(1.9)"><use href="#cloud" class="bank-cloud"/></g>
+            <g transform="translate(270 36) scale(1.7)"><use href="#cloud" class="bank-cloud"/></g>
+            <g transform="translate(375 24) scale(1.6)"><use href="#cloud" class="bank-cloud"/></g></g>
+          </g>
+
+          <!-- landscape -->
+          <path d="M-20 262 C 40 214, 110 214, 170 250 S 300 232, 420 258 L420 280 L-20 280Z" fill="#3a8f55"/>
+          <path d="M-20 270 C 60 240, 150 246, 220 262 S 340 250, 420 268 L420 285 L-20 285Z" fill="#4cb44f"/>
+
+          <g class="world">
+            <!-- soil cross-section -->
+            <rect x="-100" y="268" width="600" height="200" fill="url(#gSoil)"/>
+            <g clip-path="url(#soilClip)" id="soilDetail"></g>
+            <rect class="moist-top" x="-100" y="270" width="600" height="46" fill="#1a0f0a"/>
+            <rect class="moist-deep" x="-100" y="270" width="600" height="190" fill="url(#gMoist)"/>
+            <path d="M-100 268 L500 268" stroke="#3c2616" stroke-width="2" opacity=".6"/>
+            <g class="roots">
+              <path d="M200 270 C199 292 202 312 198 336" stroke="#e8d5a3" stroke-width="5" fill="none" stroke-linecap="round"/>
+              <path d="M200 296 C176 304 160 322 150 346" stroke="#e8d5a3" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+              <path d="M200 300 C226 308 244 326 252 352" stroke="#e8d5a3" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+              <path d="M198 336 C192 356 184 372 178 394" stroke="#e8d5a3" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+              <path d="M198 336 C206 354 214 372 224 392" stroke="#e8d5a3" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+              <path d="M165 318 C150 322 140 332 132 340" stroke="#e8d5a3" stroke-width="2" fill="none" stroke-linecap="round"/>
+              <path d="M238 322 C252 326 262 334 270 344" stroke="#e8d5a3" stroke-width="2" fill="none" stroke-linecap="round"/>
+              <g class="root-tips">
+                <circle cx="150" cy="346" r="3.4"/><circle cx="252" cy="352" r="3.4"/><circle cx="178" cy="394" r="3.4"/>
+                <circle cx="224" cy="392" r="3.4"/><circle cx="132" cy="340" r="3"/><circle cx="270" cy="344" r="3"/>
+              </g>
+            </g>
+            <g class="seep" id="seep"></g>
+
+            <!-- grass on top of the soil -->
+            <path d="M-100 262 Q-60 256 -20 262 T60 262 T140 262 T220 262 T300 262 T380 262 T460 262 L460 274 L-100 274Z" fill="#62c04a"/>
+            <g id="blades"></g>
+
+            <!-- night tint over the landscape but under the plant, so the flower keeps its colour -->
+            <rect class="fade night-tint" x="-100" y="150" width="600" height="320" fill="#0a1436"/>
+
+            <!-- the sunflower -->
+            <g class="grow"><g class="plant">
+              <path d="M200 272 C198 232 203 172 200 128" stroke="#2f8a2b" stroke-width="10" fill="none" stroke-linecap="round"/>
+              <path d="M202 270 C200 232 205 172 202 130" stroke="#6bcf4c" stroke-width="3" fill="none" stroke-linecap="round" opacity=".8"/>
+              <g transform="translate(400 0) scale(-1 1)"><g class="leaf l-left">
+                <path d="M200 200 C222 176 258 172 282 188 C264 216 228 222 200 200Z" fill="#46b03c" stroke="#2c8528" stroke-width="2.2" stroke-linejoin="round"/>
+                <path d="M204 199 C228 190 252 188 274 190" stroke="#2c8528" stroke-width="2" fill="none" stroke-linecap="round"/>
+              </g></g>
+              <g class="leaf l-right">
+                <path d="M200 232 C226 204 268 202 296 220 C276 250 232 256 200 232Z" fill="#4cb940" stroke="#2c8528" stroke-width="2.2" stroke-linejoin="round"/>
+                <path d="M204 231 C232 220 262 218 288 222" stroke="#2c8528" stroke-width="2" fill="none" stroke-linecap="round"/>
+              </g>
+              <g class="head">
+                <g class="petals petals-back" id="petalsBack"></g>
+                <g class="petals petals-front" id="petalsFront"></g>
+                <circle cx="200" cy="105" r="26" fill="url(#gDisc)" stroke="#4a290f" stroke-width="2.5"/>
+                <g class="seeds" fill="#3d2108" opacity=".5"><circle cx="190" cy="92" r="1.4"/><circle cx="205" cy="90" r="1.4"/><circle cx="214" cy="97" r="1.4"/><circle cx="186" cy="105" r="1.4"/><circle cx="216" cy="110" r="1.4"/><circle cx="194" cy="120" r="1.4"/><circle cx="208" cy="121" r="1.4"/></g>
+                <g class="face">
+                  <g class="eyes eyes-open">
+                    <g class="eye"><circle cx="191" cy="101" r="3.4" fill="#25120a"/><circle cx="192.2" cy="99.8" r="1.1" fill="#fff"/></g>
+                    <g class="eye"><circle cx="209" cy="101" r="3.4" fill="#25120a"/><circle cx="210.2" cy="99.8" r="1.1" fill="#fff"/></g>
+                  </g>
+                  <g class="eyes eyes-happy" fill="none" stroke="#25120a" stroke-width="2.6" stroke-linecap="round">
+                    <path d="M186.5 102.5 Q191 95.5 195.5 102.5"/><path d="M204.5 102.5 Q209 95.5 213.5 102.5"/>
+                  </g>
+                  <path d="M192 111 Q200 120 208 111" fill="none" stroke="#25120a" stroke-width="2.4" stroke-linecap="round"/>
+                  <circle cx="185" cy="109" r="4.2" fill="#ff8fa3" opacity=".6"/><circle cx="215" cy="109" r="4.2" fill="#ff8fa3" opacity=".6"/>
+                </g>
+              </g>
+            </g></g>
+
+            <!-- a bee, for company -->
+            <g class="bee"><g class="bee-body">
+              <ellipse class="wing" cx="-2" cy="-5" rx="4" ry="2.6" fill="#fff" opacity=".85"/><ellipse class="wing w2" cx="3" cy="-5" rx="4" ry="2.6" fill="#fff" opacity=".85"/>
+              <ellipse cx="0" cy="0" rx="7" ry="5" fill="#ffd23f" stroke="#3a2a0a" stroke-width="1.2"/>
+              <path d="M-2 -4.6 V4.6 M2.5 -4.4 V4.4" stroke="#3a2a0a" stroke-width="1.8"/>
+              <circle cx="-4.5" cy="-1" r="1" fill="#3a2a0a"/>
+            </g></g>
+
+            <!-- watering can: it IS the valve, so it only pours while the valve is confirmed open -->
+            <g class="can"><g class="can-bob">
+              <path d="M34 -12 C 64 -24, 68 24, 31 26" stroke="#1d7f74" stroke-width="7" fill="none" stroke-linecap="round"/>
+              <path d="M-33 12 L-64 -14 L-58 -22 L-28 0Z" fill="#2ba597" stroke="#1d7f74" stroke-width="2" stroke-linejoin="round"/>
+              <g transform="translate(-64 -17) rotate(-48)"><rect x="-7" y="-10" width="8" height="20" rx="2.5" fill="#23988b" stroke="#1d7f74" stroke-width="2"/><circle cx="-2" cy="-5" r="1" fill="#0f4f49"/><circle cx="-2" cy="0" r="1" fill="#0f4f49"/><circle cx="-2" cy="5" r="1" fill="#0f4f49"/></g>
+              <path d="M-34 -20 L34 -20 Q41 -20 39 -12 L33 31 Q32 37 26 37 L-26 37 Q-32 37 -33 31 L-39 -12 Q-41 -20 -34 -20Z" fill="url(#gCan)" stroke="#1d7f74" stroke-width="2.5" stroke-linejoin="round"/>
+              <ellipse cx="0" cy="-20" rx="34" ry="7" fill="#1d7f74"/><ellipse cx="0" cy="-20" rx="29" ry="4.8" fill="#0f4f49"/><ellipse cx="0" cy="-19.2" rx="26" ry="3.4" fill="#4cc9f0"/>
+              <path d="M-26 -10 L-21 28" stroke="#fff" stroke-width="4" opacity=".28" stroke-linecap="round"/>
+              <circle cx="-9" cy="8" r="2.6" fill="#0f4f49"/><circle cx="9" cy="8" r="2.6" fill="#0f4f49"/><path d="M-8 17 Q0 24 8 17" fill="none" stroke="#0f4f49" stroke-width="2.4" stroke-linecap="round"/>
+            </g></g>
+
+            <!-- water that falls from the can -->
+            <g class="pour">
+              <path class="stream" d="M252 76 Q220 96 196 268" stroke="#4cc9f0" stroke-width="3.5" fill="none" stroke-linecap="round" opacity=".85"/>
+              <g id="drops" transform="translate(252 76)"></g>
+              <g id="splashes"></g>
+            </g>
+
+            <!-- rain -->
+            <g class="rain" clip-path="url(#rainClip)">
+              <g id="streaks"></g>
+              <g id="rainSplashes"></g>
+            </g>
+            <g class="puddles"><ellipse cx="120" cy="272" rx="22" ry="3.2"/><ellipse cx="282" cy="273" rx="26" ry="3.4"/><ellipse cx="206" cy="274" rx="16" ry="2.6"/></g>
+          </g>
+        </g>
+      </svg>
+
+      <div class="hud-top">
+        <span id="pill" class="pill pill-idle"><i class="dot"></i><span id="pill-text">Scheduled</span></span>
+      </div>
+      <div class="hud-bottom"><span id="wx-chip" class="chip" hidden></span></div>
     </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div id="big" class="big" aria-live="polite">—</div>
+        <div id="sub" class="sub"></div>
+      </div>
+      <div class="progress" id="progress" hidden><div id="bar"></div></div>
+      <div id="dots" class="dots" hidden aria-hidden="true"></div>
+      <div id="notice" class="notice" hidden></div>
+      <div class="actions">
+        <button id="start" class="btn btn-primary" type="button">Water now</button>
+        <button id="stop" class="btn btn-stop" type="button" hidden>Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── Weather, settings, history ───────────── -->
+  <div class="side">
+    <section class="card" id="wx" aria-label="Weather">
+      <div class="card-head"><h2>Weather</h2><span id="wx-updated" class="muted small"></span></div>
+      <div id="wx-body"><p class="muted">Loading the forecast…</p></div>
+    </section>
+
+    <details class="card settings" id="settings">
+      <summary><h2>Cycle &amp; schedule</h2><span class="muted small" id="settings-summary"></span></summary>
+      <form id="config">
+        <label class="switch"><input type="checkbox" id="enabled"><span>Scheduled runs</span></label>
+        <div class="grid3">
+          <label class="field"><span>Water</span><div class="num"><input type="number" id="onMinutes" min="0.1" step="any" inputmode="decimal"><em>min</em></div></label>
+          <label class="field"><span>Soak</span><div class="num"><input type="number" id="soakMinutes" min="0" step="any" inputmode="decimal"><em>min</em></div></label>
+          <label class="field"><span>Repeat</span><div class="num"><input type="number" id="cycles" min="1" max="20" inputmode="numeric"><em>×</em></div></label>
+        </div>
+
+        <h3>Start times</h3>
+        <div id="schedules"></div>
+        <button type="button" class="btn btn-ghost" id="add-schedule">+ Add start time</button>
+
+        <h3>Rain delay</h3>
+        <label class="switch"><input type="checkbox" id="rainEnabled"><span>Skip scheduled runs when rain is forecast</span></label>
+        <div class="grid3">
+          <label class="field"><span>Look ahead</span><div class="num"><input type="number" id="lookaheadHours" min="1" max="48" inputmode="numeric"><em>h</em></div></label>
+          <label class="field"><span>Chance ≥</span><div class="num"><input type="number" id="probabilityPct" min="0" max="100" inputmode="numeric"><em>%</em></div></label>
+          <label class="field"><span>Or rain ≥</span><div class="num"><input type="number" id="mm" min="0" step="any" inputmode="decimal"><em>mm</em></div></label>
+        </div>
+        <p class="muted small">Only scheduled runs check the forecast. Starting by hand always waters. Set mm to 0 to ignore the amount.</p>
+        <div class="actions"><button class="btn btn-primary" type="submit">Save</button></div>
+      </form>
+    </details>
+
+    <section class="card" aria-label="History">
+      <div class="card-head"><h2>Recent runs</h2></div>
+      <ul id="history" class="history"></ul>
+    </section>
   </div>
-  <div id="msg"></div>
+</main>
 
-  <h2>Cycle</h2>
-  <form id="config" class="card">
-    <label><input type="checkbox" id="enabled"> Scheduled runs enabled</label>
-    <label>Water for <input type="number" id="onMinutes" min="0.1" step="any"> min</label>
-    <label>Soak for <input type="number" id="soakMinutes" min="0" step="any"> min</label>
-    <label>Repeat <input type="number" id="cycles" min="1" max="20"> times</label>
-
-    <h2>Start times</h2>
-    <div id="schedules"></div>
-    <button type="button" id="add-schedule">Add start time</button>
-
-    <h2>Rain</h2>
-    <label><input type="checkbox" id="rainEnabled"> Skip scheduled runs when rain is forecast</label>
-    <label>Look ahead <input type="number" id="lookaheadHours" min="1" max="48"> hours</label>
-    <label>Skip at <input type="number" id="probabilityPct" min="0" max="100"> % chance of rain</label>
-    <label>or <input type="number" id="mm" min="0" step="any"> mm expected (0 = ignore)</label>
-    <div class="row"><button class="primary" type="submit">Save</button><button type="button" id="check-rain">Check rain now</button></div>
-  </form>
-
-  <h2>History</h2>
-  <table id="history"></table>
-</div>
-
-<script>
-const $ = (id) => document.getElementById(id);
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-let status = null;
-let schedules = [];
-let skew = 0; // server clock minus browser clock, so countdowns survive a wrong local clock
-
-async function api(path, options = {}) {
-  // The Cloudflare Access cookie goes with same-origin requests. When the session expires the
-  // login redirect makes fetch fail, so the fix is to reload the page and sign in again.
-  let res;
-  try {
-    res = await fetch(`/api${path}`, { ...options, headers: { "content-type": "application/json" } });
-  } catch {
-    throw new Error("Session expired or offline. Reload the page to sign in again.");
-  }
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? body.message ?? res.statusText);
-  return body;
-}
-
-function say(text, isError = false) { const m = $("msg"); m.textContent = text; m.className = isError ? "error" : ""; }
-const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
-
-function renderSchedules() {
-  const box = $("schedules");
-  box.replaceChildren();
-  schedules.forEach((s, i) => {
-    const row = document.createElement("div");
-    row.className = "row";
-    const time = Object.assign(document.createElement("input"), { type: "time", value: s.time });
-    time.onchange = () => (s.time = time.value);
-    const days = document.createElement("span");
-    days.className = "days";
-    DAYS.forEach((name, d) => {
-      const label = document.createElement("label");
-      const cb = Object.assign(document.createElement("input"), { type: "checkbox", checked: s.days.includes(d) });
-      cb.onchange = () => (s.days = cb.checked ? [...s.days, d] : s.days.filter((x) => x !== d));
-      label.append(cb, ` ${name}`);
-      days.append(label);
-    });
-    const del = Object.assign(document.createElement("button"), { type: "button", textContent: "Remove" });
-    del.onclick = () => { schedules.splice(i, 1); renderSchedules(); };
-    row.append(time, days, del);
-    box.append(row);
-  });
-}
-
-function fillForm(c) {
-  $("enabled").checked = c.enabled;
-  $("onMinutes").value = c.onMinutes;
-  $("soakMinutes").value = c.soakMinutes;
-  $("cycles").value = c.cycles;
-  $("rainEnabled").checked = c.rain.enabled;
-  $("lookaheadHours").value = c.rain.lookaheadHours;
-  $("probabilityPct").value = c.rain.probabilityPct;
-  $("mm").value = c.rain.mm;
-  schedules = structuredClone(c.schedules);
-  renderSchedules();
-}
-
-function renderStatus() {
-  const { state } = status;
-  const left = Math.max(0, (state.phaseEndsAt - Date.now() - skew) / 1000);
-  if (state.phase === "idle") {
-    $("phase").textContent = "Idle";
-    $("detail").textContent = "";
-  } else {
-    $("phase").textContent = state.phase === "watering" ? "Watering" : "Soaking";
-    $("detail").textContent = `Cycle ${state.cycle} of ${state.cycles}, ${fmt(left)} left in this phase`;
-  }
-  $("start").disabled = state.phase !== "idle";
-}
-
-function renderHistory() {
-  const table = $("history");
-  table.replaceChildren();
-  for (const h of status.history) {
-    const tr = table.insertRow();
-    tr.insertCell().textContent = new Date(h.at).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-    tr.insertCell().textContent = h.outcome;
-    tr.insertCell().textContent = h.outcome === "skipped-rain" || h.outcome === "error" ? h.note : `${Math.round(h.wateredSeconds / 60)} min, ${h.trigger}`;
-  }
-}
-
-async function refresh(withForm = false) {
-  status = await api("/status");
-  skew = status.now - Date.now();
-  if (withForm) fillForm(status.config);
-  renderStatus(); renderHistory();
-}
-
-$("start").onclick = () => api("/start", { method: "POST" }).then((r) => say(r.message)).catch((e) => say(e.message, true)).then(() => refresh());
-$("stop").onclick = () => api("/stop", { method: "POST" }).then((r) => say(r.message, !r.ok)).catch((e) => say(e.message, true)).then(() => refresh());
-$("add-schedule").onclick = () => { schedules.push({ days: [0, 1, 2, 3, 4, 5, 6], time: "06:00" }); renderSchedules(); };
-$("check-rain").onclick = () => api("/rain").then((r) => say(`${r.skip ? "Would skip" : "Would water"}: ${r.reason}`)).catch((e) => say(e.message, true));
-$("config").onsubmit = async (e) => {
-  e.preventDefault();
-  const n = (id) => Number($(id).value);
-  const config = {
-    enabled: $("enabled").checked, onMinutes: n("onMinutes"), soakMinutes: n("soakMinutes"), cycles: n("cycles"), schedules,
-    rain: { enabled: $("rainEnabled").checked, lookaheadHours: n("lookaheadHours"), probabilityPct: n("probabilityPct"), mm: n("mm") },
-  };
-  try { fillForm(await api("/config", { method: "PUT", body: JSON.stringify(config) })); say("Saved"); } catch (err) { say(err.message, true); }
-};
-
-refresh(true).catch((e) => say(e.message, true));
-setInterval(() => status && refresh().catch(() => {}), 5000);
-setInterval(() => status && renderStatus(), 1000);
-</script>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="/app.js" type="module"></script>
 </body>
 </html>

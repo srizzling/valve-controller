@@ -152,3 +152,37 @@ export function dueSchedule(config: Config, now: number, timeZone: string): stri
   const hit = config.schedules.some((s) => s.time === time && s.days.includes(day));
   return hit ? `${date} ${time}` : null;
 }
+
+function tzOffsetMs(ts: number, timeZone: string): number {
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(new Date(ts));
+  const g = (t: string) => Number(p.find((x) => x.type === t)!.value);
+  return Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second")) - Math.floor(ts / 1000) * 1000;
+}
+
+function localToUtc(y: number, m: number, d: number, hh: number, mm: number, timeZone: string): number {
+  const guess = Date.UTC(y, m, d, hh, mm);
+  const off = tzOffsetMs(guess, timeZone);
+  let utc = guess - off;
+  const off2 = tzOffsetMs(utc, timeZone); // the offset can differ across a DST change
+  if (off2 !== off) utc = guess - off2;
+  return utc;
+}
+
+/** The next scheduled start after `now` (epoch ms), or null when nothing is scheduled. */
+export function nextRunAt(config: Config, now: number, timeZone: string): number | null {
+  if (!config.enabled || config.schedules.length === 0) return null;
+  const [y, m, d] = localParts(now, timeZone).date.split("-").map(Number);
+  let best: number | null = null;
+  for (let i = 0; i <= 7; i++) {
+    const day = new Date(Date.UTC(y, m - 1, d + i));
+    for (const s of config.schedules) {
+      if (!s.days.includes(day.getUTCDay())) continue;
+      const [hh, mm] = s.time.split(":").map(Number);
+      const t = localToUtc(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), hh, mm, timeZone);
+      if (t > now && (best === null || t < best)) best = t;
+    }
+  }
+  return best;
+}

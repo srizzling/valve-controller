@@ -22,6 +22,24 @@ notification. You can drive it from a web UI or from Google Home.
 - `worker/` holds the UI, the schedule, the cycle/soak state machine (a Durable Object with alarms), the rain check,
   ntfy, and Google Home.
 
+## The UI
+
+An animated cartoon garden follows the controller, not the buttons you press:
+
+- **Idle**: a sunflower swaying under the real sky (sun, moon and stars, clouds, bee), and the next watering time.
+- **Watering**: a watering can tilts in and pours, but only once the controller has confirmed the valve open. Clicking
+  "Water now" changes nothing on screen until the run state comes back.
+- **Soaking**: the can leaves, the view slides down to the soil, and droplets seep towards the roots while the moisture
+  spreads in step with the soak countdown.
+- **Rain**: rain falls only when it is raining now (from the current conditions), with puddles and a darker sky. A rain
+  *forecast* on a sunny day only shows the "Rain delay active" notice and why.
+
+The weather card shows current conditions, rain now / last 24 h / next 24 h, chance of rain, humidity, wind, a 7-day
+rain outlook, and whether the next scheduled run will go ahead. Animations respect `prefers-reduced-motion`.
+
+To preview every scene without a backend, serve `worker/public` and open `/?demo=idle`, `watering`, `soaking`,
+`rain`, `delay` (sunny with a rain delay), `cloudy` or `night`.
+
 ## Behaviour
 
 - Settings (water minutes, soak minutes, number of cycles, start times, rain thresholds) live in the UI. A run

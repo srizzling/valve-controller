@@ -6,6 +6,8 @@ import type { Env } from "./env";
 import { googleRoutes } from "./google";
 import { validateConfig } from "./plan";
 import { fetchForecast, rainVerdict } from "./rain";
+import type { RainVerdict } from "./rain";
+import { getWeather } from "./weather";
 
 export { Controller };
 
@@ -30,6 +32,28 @@ api.post("/start", async (c) => {
   return c.json(r, r.ok ? 200 : 409);
 });
 api.post("/stop", async (c) => c.json(await controller(c.env).stop()));
+// Everything the weather panel needs, plus whether the next scheduled run would go ahead
+api.get("/weather", async (c) => {
+  const status = await controller(c.env).getStatus();
+  try {
+    const { data, forecast } = await getWeather(c.env);
+    let nextRun: { at: number; verdict: RainVerdict | null; note?: string } | null = null;
+    if (status.nextRunAt) {
+      nextRun = { at: status.nextRunAt, verdict: null };
+      if (!status.config.rain.enabled) nextRun.verdict = { skip: false, reason: "rain check is off" };
+      else {
+        try {
+          nextRun.verdict = rainVerdict(forecast, status.config.rain, status.nextRunAt);
+        } catch (e) {
+          nextRun.note = e instanceof Error ? e.message : "no forecast for that time";
+        }
+      }
+    }
+    return c.json({ ...data, nextRun });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "weather unavailable" }, 502);
+  }
+});
 // Diagnostics: what would the rain check say right now, and what does the valve itself report?
 api.get("/rain", async (c) => {
   const { rain } = await controller(c.env).getConfig();

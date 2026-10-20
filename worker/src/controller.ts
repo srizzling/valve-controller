@@ -4,7 +4,7 @@ import type { Env } from "./env";
 import { ping } from "./heartbeat";
 import type { Signal } from "./heartbeat";
 import { notify } from "./ntfy";
-import { advance, defaultConfig, dueSchedule, idleState, startRun, wateredSoFar } from "./plan";
+import { advance, defaultConfig, dueSchedule, idleState, nextRunAt, startRun, wateredSoFar } from "./plan";
 import type { Config, RunState, Trigger } from "./plan";
 import { fetchForecast, rainVerdict } from "./rain";
 
@@ -20,6 +20,8 @@ export interface Status {
   state: RunState;
   config: Config;
   now: number;
+  timezone: string;
+  nextRunAt: number | null;
   history: HistoryEntry[];
 }
 
@@ -57,7 +59,9 @@ export class Controller extends DurableObject<Env> {
 
   async getStatus(): Promise<Status> {
     const history = (await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [];
-    return { state: await this.getState(), config: await this.getConfig(), now: Date.now(), history };
+    const config = await this.getConfig();
+    const now = Date.now();
+    return { state: await this.getState(), config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, this.env.TIMEZONE), history };
   }
 
   start(trigger: Trigger): Promise<{ ok: boolean; message: string }> {
