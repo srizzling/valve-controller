@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
+import { checkAccess } from "./access";
 import { valveStatus } from "./agent";
 import { Controller } from "./controller";
 import type { Env } from "./env";
@@ -12,7 +12,11 @@ export { Controller };
 const controller = (env: Env) => env.CONTROLLER.get(env.CONTROLLER.idFromName("main"));
 
 const api = new Hono<{ Bindings: Env }>();
-api.use("*", (c, next) => bearerAuth<{ Bindings: Env }>({ token: c.env.API_TOKEN })(c, next));
+api.use("*", async (c, next) => {
+  const access = await checkAccess(c.req.raw, c.env);
+  if (!access.ok) return c.json({ error: access.error }, access.status);
+  await next();
+});
 api.get("/status", async (c) => c.json(await controller(c.env).getStatus()));
 api.put("/config", async (c) => {
   try {

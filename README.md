@@ -55,17 +55,35 @@ In Cloudflare Zero Trust, create a tunnel and point a public hostname (e.g. `val
 ```sh
 cd worker
 npm install
-# edit wrangler.jsonc vars: AGENT_URL, TIMEZONE, LATITUDE, LONGITUDE, NTFY_TOPIC
-npx wrangler secret put API_TOKEN      # password for the UI (and Google account linking)
-npx wrangler secret put AGENT_TOKEN    # same value as the agent's AGENT_TOKEN
-npx wrangler secret put SIGNING_KEY    # openssl rand -hex 32
+# edit wrangler.jsonc vars: AGENT_URL, TIMEZONE, LATITUDE, LONGITUDE, NTFY_TOPIC,
+# and the two ACCESS_* values from step 3
+npx wrangler secret put AGENT_TOKEN     # same value as the agent's AGENT_TOKEN
+npx wrangler secret put SIGNING_KEY     # openssl rand -hex 32
+npx wrangler secret put LINK_PASSWORD   # only used when linking Google Home
 npx wrangler deploy
 ```
 
-Open the Worker URL, enter `API_TOKEN`, and set the cycle. Consider putting Cloudflare Access in front of the
-Worker as well.
+### 3. Lock it down with Cloudflare Access
 
-### 3. Google Home (optional)
+The UI is reachable from anywhere, so it sits behind Cloudflare Access (login with your Google account or an emailed
+code). The Worker also checks the Access token itself on every `/api/*` call, so a request that skips Access, for
+example one sent straight to the `workers.dev` hostname, gets a 401/403. If the two `ACCESS_*` values are not set, `/api/*`
+refuses everything (503) rather than leaving the valve open to the world.
+
+1. Give the Worker a hostname you can protect: either a custom domain (Worker > Settings > Domains & Routes) or just
+   the `workers.dev` one. In the same place, turn on **Cloudflare Access** for the Worker; that covers `workers.dev`
+   and preview URLs too.
+2. Zero Trust > Access > Applications > Add > Self-hosted, for the Worker hostname. Add an **Allow** policy for your
+   own email (or Google identity).
+3. Copy the application's **Audience (AUD) tag** into `ACCESS_AUD`, and your team domain
+   (`<team>.cloudflareaccess.com`) into `ACCESS_TEAM_DOMAIN`, both in `wrangler.jsonc`. Redeploy.
+4. Only if you use Google Home: add a second self-hosted application for the paths `/oauth/*` and `/google/*` on the
+   same hostname with a **Bypass** policy. Google's servers can't log in through Access. Those routes have their own
+   auth: the link password for account linking, and signed tokens for fulfillment.
+
+If the session expires while the page is open, requests fail and the page asks you to reload and sign in again.
+
+### 4. Google Home (optional)
 
 Smart Home Actions are free for personal use and don't need review while the project is in testing.
 
@@ -75,7 +93,7 @@ Smart Home Actions are free for personal use and don't need review while the pro
 3. Fulfillment URL: `https://<worker>/google/fulfillment`.
 4. Set `GOOGLE_PROJECT_ID` in `wrangler.jsonc`, then
    `wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and redeploy.
-5. In the Google Home app: add device, "Works with Google", pick your project, enter `API_TOKEN` when asked.
+5. In the Google Home app: add device, "Works with Google", pick your project, enter `LINK_PASSWORD` when asked.
 
 The valve appears as a sprinkler called "Garden water": "turn on / off the garden water" or "start / stop".
 
@@ -91,5 +109,5 @@ cd agent && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -
 cd worker && npm install && npm test && npm run typecheck
 ```
 
-For `wrangler dev`, copy `worker/.dev.vars.example` to `worker/.dev.vars`. Minimum cycle and soak times of 0.1 minutes
+For `wrangler dev`, copy `worker/.dev.vars.example` to `worker/.dev.vars`; it sets `DEV_BYPASS_ACCESS=true`, which must never be set in production. Minimum cycle and soak times of 0.1 minutes
 are allowed so a whole run can be tried in under a minute against a fake agent.

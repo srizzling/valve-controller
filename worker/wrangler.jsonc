@@ -22,8 +22,11 @@
     "NTFY_URL": "https://ntfy.sh",
     "NTFY_TOPIC": "change-me-valve-topic",
     // Google Cloud project id for the Smart Home Action (only needed for Google Home)
-    "GOOGLE_PROJECT_ID": ""
+    "GOOGLE_PROJECT_ID": "",
+    // Cloudflare Access: team domain and the application's Audience (AUD) tag
+    "ACCESS_TEAM_DOMAIN": "yourteam.cloudflareaccess.com",
+    "ACCESS_AUD": ""
   }
-  // Secrets (wrangler secret put ...): API_TOKEN, AGENT_TOKEN, SIGNING_KEY,
+  // Secrets (wrangler secret put ...): LINK_PASSWORD, AGENT_TOKEN, SIGNING_KEY,
   // and optionally NTFY_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 }

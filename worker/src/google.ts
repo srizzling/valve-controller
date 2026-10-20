@@ -51,7 +51,7 @@ export function googleRoutes(controller: (env: Env) => DurableObjectStub<Control
 <title>Link valve controller</title><body style="font-family:system-ui;max-width:24rem;margin:3rem auto;padding:0 1rem">
 <h1>Link valve controller</h1>${error ? `<p style="color:#b00">${escapeHtml(error)}</p>` : ""}
 <form method=post>${["client_id", "redirect_uri", "state", "response_type"].map((k) => `<input type=hidden name=${k} value="${escapeHtml(p.get(k) ?? "")}">`).join("")}
-<label>Access token<br><input name=password type=password autofocus style="width:100%;padding:.5rem"></label>
+<label>Link password<br><input name=password type=password autofocus style="width:100%;padding:.5rem"></label>
 <p><button style="padding:.5rem 1rem">Link</button></p></form>`;
 
   const checkAuthorizeParams = (env: Env, p: URLSearchParams) =>
@@ -67,7 +67,7 @@ export function googleRoutes(controller: (env: Env) => DurableObjectStub<Control
     const form = await c.req.formData();
     const p = new URLSearchParams(Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)])));
     if (!checkAuthorizeParams(c.env, p)) return c.text("invalid request", 400);
-    if (!(await safeEqual(p.get("password") ?? "", c.env.API_TOKEN))) return c.html(authorizeForm(p, "Wrong token"), 401);
+    if (!(await safeEqual(p.get("password") ?? "", c.env.LINK_PASSWORD))) return c.html(authorizeForm(p, "Wrong password"), 401);
     const redirect = p.get("redirect_uri")!;
     const code = await signToken(c.env.SIGNING_KEY, { typ: "code", exp: Math.floor(Date.now() / 1000) + 600, redirect_uri: redirect });
     const url = new URL(redirect);
