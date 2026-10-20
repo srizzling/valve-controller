@@ -27,9 +27,9 @@ notification. You can drive it from a web UI or from Google Home.
 An animated cartoon garden follows the controller, not the buttons you press:
 
 - **Idle**: a sunflower swaying under the real sky (sun, moon and stars, clouds, bee), and the next watering time.
-- **Watering**: a watering can tilts in and pours, but only once the controller has confirmed the valve open. Clicking
+- **Watering**: a little robot gardener rolls in and tilts its watering can over the sunflower, but only once the controller has confirmed the valve open. Clicking
   "Water now" changes nothing on screen until the run state comes back.
-- **Soaking**: the can leaves, the view slides down to the soil, and droplets seep towards the roots while the moisture
+- **Soaking**: the robot leaves, the view slides down to the soil, and droplets seep towards the roots while the moisture
   spreads in step with the soak countdown.
 - **Rain**: rain falls only when it is raining now (from the current conditions), with puddles and a darker sky. A rain
   *forecast* on a sunny day only shows the "Rain delay active" notice and why.

@@ -42,6 +42,30 @@ function buildScene() {
     const lean = (rand() - 0.5) * 8;
     el("path", { d: `M${x} 266 Q${x + lean / 2} ${266 - h * 0.6} ${x + lean} ${266 - h} Q${x + 4 + lean / 2} ${266 - h * 0.5} ${x + 6} 266Z`, fill: rand() > 0.5 ? "#6fcf4f" : "#57b640" }, blades);
   }
+  // a bed of little flowers along the grass: tulips, daisies, bluebells and poppies
+  const bed = $("bed");
+  for (let x = -6; x < 410; x += 13 + rand() * 9) {
+    if (Math.abs(x - 200) < 16) continue;
+    const kind = Math.floor(rand() * 5);
+    const h = 16 + rand() * 20;
+    const g = el("g", { class: "bloom", style: `transform-origin:${x}px 271px;animation-delay:${-rand() * 4}s` }, bed);
+    el("path", { d: `M${x} 273 L${x} ${270 - h}`, stroke: "#3f9b3a", "stroke-width": 2.2, "stroke-linecap": "round" }, g);
+    el("ellipse", { cx: x + 4, cy: 266 - h * 0.25, rx: 5, ry: 2, fill: "#4cb940", transform: `rotate(-30 ${x + 4} ${266 - h * 0.25})` }, g);
+    const head = el("g", { transform: `translate(${x} ${270 - h})` }, g);
+    if (kind < 2) {
+      const [fill, stroke] = kind === 0 ? ["#e8362f", "#a31d1d"] : ["#ffc933", "#d99a00"];
+      el("path", { d: "M-6 -2 C-7 -12 -3 -14 0 -9 C3 -14 7 -12 6 -2 C4 3 -4 3 -6 -2Z", fill, stroke, "stroke-width": 1 }, head);
+    } else if (kind === 2) {
+      for (let k = 0; k < 8; k++) el("ellipse", { cx: 0, cy: -5, rx: 2.2, ry: 4.6, fill: "#fff", stroke: "#cfd8e8", "stroke-width": 0.6, transform: `rotate(${k * 45})` }, head);
+      el("circle", { r: 2.6, fill: "#ffc933" }, head);
+    } else if (kind === 3) {
+      const col = rand() > 0.5 ? "#5b7cf0" : "#9a6be0";
+      for (let k = 0; k < 5; k++) el("circle", { cx: (k % 2 ? 1.6 : -1.6), cy: -k * 3.4, r: 3.4 - k * 0.4, fill: col }, head);
+    } else {
+      for (let k = 0; k < 5; k++) el("circle", { cx: Math.cos(k * 1.256) * 3.6, cy: Math.sin(k * 1.256) * 3.6, r: 3.6, fill: "#e8362f" }, head);
+      el("circle", { r: 2, fill: "#2b1b12" }, head);
+    }
+  }
   // pebbles and sediment lines in the soil
   const soil = $("soilDetail");
   for (const y of [300, 340, 385, 425]) {
@@ -50,15 +74,15 @@ function buildScene() {
   for (let i = 0; i < 26; i++) {
     el("ellipse", { cx: rand() * 400, cy: 282 + rand() * 150, rx: 2 + rand() * 4, ry: 1.6 + rand() * 3, fill: rand() > 0.5 ? "#8c6a4d" : "#33211a", opacity: 0.55 }, soil);
   }
-  // water drops thrown from the spout on a curved path: x is linear, y accelerates
-  for (let i = 0; i < 16; i++) {
-    const dx = -(36 + ((i * 11) % 36));
-    const dur = 1.05 + (i % 4) * 0.08;
-    const delay = -(i * 0.11);
+  // water thrown from the can's spout on a curved path: x is linear, y accelerates
+  for (let i = 0; i < 14; i++) {
+    const dx = -(6 + ((i * 7) % 30));
+    const dur = 0.7 + (i % 4) * 0.06;
+    const delay = -(i * 0.09);
     const x = el("g", { class: "drop-x", style: `--dx:${dx}px;--dur:${dur}s;--delay:${delay}s` }, $("drops"));
-    const y = el("g", { class: "drop-y", style: `--dur:${dur}s;--delay:${delay}s` }, x);
-    el("use", { href: "#drop", transform: `scale(${0.8 + (i % 3) * 0.2})` }, y);
-    el("ellipse", { class: "splash", cx: 252 + dx, cy: 269, rx: 8, ry: 2.4, style: `--dur:${dur}s;--delay:${delay}s` }, $("splashes"));
+    const y = el("g", { class: "drop-y", style: `--dur:${dur}s;--delay:${delay}s;--fall:70px` }, x);
+    el("use", { href: "#drop", transform: `scale(${0.75 + (i % 3) * 0.2})` }, y);
+    el("ellipse", { class: "splash", cx: 216 + dx, cy: 269, rx: 8, ry: 2.4, style: `--dur:${dur}s;--delay:${delay}s` }, $("splashes"));
   }
   // falling rain
   for (let i = 0; i < 34; i++) {
