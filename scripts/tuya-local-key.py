@@ -25,7 +25,8 @@ import tinytuya
 ROOT = Path(__file__).resolve().parent.parent
 ENV = ROOT / "infra" / ".env"
 TFVARS = ROOT / "infra" / "homelab" / "terraform.tfvars"
-REGIONS = ["sg", "us", "us-e", "eu", "eu-w", "in", "cn"]
+# Australian accounts created before late 2025 are on Central Europe ("eu"); newer ones are on Singapore ("sg").
+REGIONS = ["eu", "sg", "us", "us-e", "eu-w", "in", "cn"]
 VALVE_CATEGORY = "sfkzq"  # Tuya's category code for a smart water valve
 
 

@@ -133,7 +133,8 @@ Still manual, because there is no API for them:
   `terraform import cloudflare_zero_trust_organization.this <account_id>` (in `infra/`, with `.env` loaded).
 - Creating the healthchecks.io account and its ntfy or email integration.
 - Getting the Tuya local key, which only Tuya's cloud holds. Create a free project at <https://iot.tuya.com> (select every
-  data center if it lets you), authorize its **IoT Core** and **Authorization Token Management** APIs, link your Smart Life
+  data center if it lets you; an older Australian Smart Life account is on **Central Europe**, a newer one on Singapore, and
+  linking says "inconsistent" if the project is in the wrong one), authorize its **IoT Core** and **Authorization Token Management** APIs, link your Smart Life
   account (Devices > Link App Account, scan the QR code), and put the project's Access ID and Secret in `infra/.env` as
   `TUYA_API_KEY` and `TUYA_API_SECRET`. Then `agent/.venv/bin/python scripts/tuya-local-key.py` finds the valve on the LAN,
   works out the data center by trying each one, and saves the local key, device id and IP where Terraform reads them.
