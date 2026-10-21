@@ -2,7 +2,7 @@ cloudflare_account_id = "0123456789abcdef0123456789abcdef"
 zone_name             = "example.com"
 app_hostname          = "valve.example.com"
 agent_hostname        = "valve-agent.example.com"
-access_team_domain    = "yourteam.cloudflareaccess.com"
+zero_trust_team       = "yourteam"
 allowed_emails        = ["you@example.com"]
 
 timezone  = "Australia/Melbourne"

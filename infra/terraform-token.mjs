@@ -36,6 +36,7 @@ const ACCOUNT_GROUPS = [
   "Workers Scripts Write", // worker, versions, deployment, cron trigger, custom domain, workers.dev switch
   "Cloudflare Tunnel Write", // tunnel, its config and its token
   "Access: Apps and Policies Write", // the two Access applications and their policies
+  "Access: Organizations, Identity Providers, and Groups Write", // the Zero Trust organisation (team address)
 ];
 const ZONE_GROUPS = [
   "Zone Read", // look the zone up by name

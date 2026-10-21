@@ -98,6 +98,8 @@ resource "cloudflare_zero_trust_access_application" "ui" {
       email = { email = e }
     }]
   }]
+
+  depends_on = [cloudflare_zero_trust_organization.this]
 }
 
 # Google's servers cannot log in through Access. These paths have their own authentication
@@ -118,6 +120,8 @@ resource "cloudflare_zero_trust_access_application" "google_bypass" {
     decision = "bypass"
     include  = [{ everyone = {} }]
   }]
+
+  depends_on = [cloudflare_zero_trust_organization.this]
 }
 
 # ───────────── healthchecks.io: alert when a scheduled run does not report in ─────────────

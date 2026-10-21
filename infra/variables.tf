@@ -19,9 +19,9 @@ variable "agent_hostname" {
   description = "Public hostname of the Cloudflare Tunnel that fronts the homelab agent, for example valve-agent.example.com."
 }
 
-variable "access_team_domain" {
+variable "zero_trust_team" {
   type        = string
-  description = "Your Zero Trust team domain, for example yourteam.cloudflareaccess.com (Zero Trust > Settings > Custom Pages)."
+  description = "Your Zero Trust team name. It becomes <team>.cloudflareaccess.com and must be unique across Cloudflare."
 }
 
 variable "allowed_emails" {

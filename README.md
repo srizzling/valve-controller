@@ -127,8 +127,11 @@ the lock files.
 
 Still manual, because there is no API for them:
 
-- Creating the Cloudflare API token, the Zero Trust organisation (for the team domain), and the healthchecks.io account
-  and its ntfy or email integration.
+- **Activating Zero Trust, once.** Cloudflare's API refuses to create the organisation until you press "Enable Access"
+  in the Zero Trust dashboard (pick the team name and the Free plan). After that, Terraform takes over the organisation:
+  set `zero_trust_team` in `terraform.tfvars` to the team name you chose, then
+  `terraform import cloudflare_zero_trust_organization.this <account_id>` (in `infra/`, with `.env` loaded).
+- Creating the healthchecks.io account and its ntfy or email integration.
 - Getting the Tuya local key (`python -m tinytuya wizard`).
 - The Google Home developer console project. `terraform output google_home` prints every value to paste into it.
 - Subscribing to the ntfy topic (`terraform output ntfy_topic`).

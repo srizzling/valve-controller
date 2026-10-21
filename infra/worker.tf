@@ -10,7 +10,7 @@ locals {
     NTFY_URL           = var.ntfy_url
     NTFY_TOPIC         = local.ntfy_topic
     GOOGLE_PROJECT_ID  = var.google_project_id
-    ACCESS_TEAM_DOMAIN = var.access_team_domain
+    ACCESS_TEAM_DOMAIN = cloudflare_zero_trust_organization.this.auth_domain
     ACCESS_AUD         = cloudflare_zero_trust_access_application.ui.aud
   }
 
