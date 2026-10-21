@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "4348e917d0f8f5916f6a4e76a75f6912505efbfb"
+      "revision": "63867a657e7c94ca9ffc84c31bd071baf2bbf8d3"
     }
   },
   "components": [
@@ -111,6 +111,12 @@
           "line": 126,
           "end_line": 148,
           "label": "alarm: cycle/soak"
+        },
+        {
+          "path": "worker/src/smart.ts",
+          "line": 52,
+          "end_line": 52,
+          "label": "scale cycles by weather"
         }
       ]
     },
@@ -231,7 +237,7 @@
       "id": "weather",
       "type": "external",
       "label": "Open-Meteo",
-      "sublabel": "forecast",
+      "sublabel": "rain, ET, soil",
       "pos": [
         650,
         330
@@ -246,6 +252,12 @@
           "line": 15,
           "end_line": 15,
           "label": "forecast API"
+        },
+        {
+          "path": "worker/src/weather.ts",
+          "line": 123,
+          "end_line": 123,
+          "label": "fetch forecast, ET and soil moisture"
         }
       ]
     },
@@ -360,7 +372,7 @@
       "id": "controller-to-weather",
       "from": "controller",
       "to": "weather",
-      "label": "rain check",
+      "label": "rain + smart check",
       "variant": "dashed"
     },
     {
