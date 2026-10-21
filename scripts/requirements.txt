@@ -1,0 +1,3 @@
+tinytuya>=1.15
+tuya-device-sharing-sdk>=0.2
+qrcode>=7.4
