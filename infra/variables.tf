@@ -122,3 +122,9 @@ variable "tuya_countdown_code" {
   default     = "countdown_1"
   description = "The data point for the valve's own auto-close timer, the failsafe if the Worker stops. Empty if the valve has none."
 }
+
+variable "durable_object_ready" {
+  type        = bool
+  default     = false
+  description = "False on the very first apply, which creates the Durable Object class. Set to true (and leave it) for every apply after that."
+}

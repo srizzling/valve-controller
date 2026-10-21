@@ -142,6 +142,18 @@ $EDITOR .env                                         # add TF_VAR_healthchecks_a
 make init && make apply                              # builds the Worker bundle, then applies
 ```
 
+### First deploy: two applies
+
+The Durable Object class is created by a migration, and a Worker version cannot bind to a class that does not exist yet.
+Terraform's provider has a one-step setting for this (`exports`), but v5.28 fails to convert it, so the first deploy
+takes two applies, controlled by `durable_object_ready` in `terraform.tfvars`:
+
+1. `durable_object_ready = false` (the default): deploys the Worker with the migration and no binding.
+2. `durable_object_ready = true`: deploys a new version with the binding. Leave it `true` from then on.
+
+Every apply after that is a single step, and CI uses the `true` setting because it reads `terraform.tfvars`. Only a
+brand new Worker (a new `worker_name`) needs the two steps again.
+
 `make token` gives Terraform only what it manages: Workers Scripts, Access apps and the Zero Trust organisation on the
 account, and Zone Read, DNS and Workers Routes on your zone. Run it again with `--rotate`
 (`node terraform-token.mjs --rotate`) after you add your domain and set `zone_name`, to narrow the zone permissions from

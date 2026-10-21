@@ -30,7 +30,7 @@ locals {
 
   # Every element needs the same keys, so unused ones are null.
   worker_bindings = concat(
-    [{ type = "durable_object_namespace", name = "CONTROLLER", class_name = "Controller", text = null }],
+    var.durable_object_ready ? [{ type = "durable_object_namespace", name = "CONTROLLER", class_name = "Controller", text = null }] : [],
     [for k, v in local.worker_vars : { type = "plain_text", name = k, text = v, class_name = null }],
     [for k, v in local.worker_secrets : { type = "secret_text", name = k, text = v, class_name = null }],
   )
@@ -66,12 +66,13 @@ resource "cloudflare_worker_version" "valve" {
 
   bindings = local.worker_bindings
 
-  # Declares the Durable Object class with SQLite storage, so no separate migration step is needed.
-  exports = {
-    Controller = {
-      type    = "durable-object"
-      storage = "sqlite"
-    }
+  # The Durable Object class is created by a migration, and a version cannot bind to a class that does not exist yet.
+  # So the first apply (durable_object_ready = false) deploys the migration without the binding, and the second
+  # (true) adds the binding and drops the migration. The provider's declarative `exports` setting would do this in one
+  # step, but v5.28 fails to convert it. See the README ("First deploy").
+  migrations = var.durable_object_ready ? null : {
+    new_tag            = "v1"
+    new_sqlite_classes = ["Controller"]
   }
 }
 
