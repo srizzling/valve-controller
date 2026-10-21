@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "0ab04a026f06d85e00c30d8711f3a9d1e4ae4f35"
+      "revision": "dd9680c77017bc99419b193f15355a0daa875e4a"
     }
   },
   "components": [
@@ -463,9 +463,9 @@
       "dot": "amber",
       "title": "Provisioning",
       "items": [
-        "infra/ (Terraform) creates the Worker, cron, Access, tunnel, DNS and the check",
+        "infra/ (Terraform) creates the Worker, cron, Access, tunnel, DNS and the check; GitHub Actions applies it on every merge to main",
         "Terraform state is kept in a private R2 bucket, never in git",
-        "The homelab containers can also be deployed by Terraform over SSH"
+        "infra/homelab runs the agent and cloudflared; CI cannot reach the homelab, so it is applied by hand"
       ]
     }
   ]
