@@ -97,8 +97,6 @@ function settings() {
   // Renovate opens the fix PRs (it reads these alerts), so Dependabot must not open a second one for the same advisory.
   api("DELETE", `repos/${repo}/automated-security-fixes`, undefined, "Dependabot security PRs off (Renovate raises them)");
   api("PATCH", `repos/${repo}`, { security_and_analysis: { secret_scanning: { status: "enabled" }, secret_scanning_push_protection: { status: "enabled" } } }, "secret scanning and push protection on");
-  // Separate call: if one of these is not offered on your plan, the two above still apply.
-  api("PATCH", `repos/${repo}`, { security_and_analysis: { secret_scanning_non_provider_patterns: { status: "enabled" }, secret_scanning_validity_checks: { status: "enabled" } } }, "secret scanning also finds generic secrets and checks whether a leaked key is live");
   api("PUT", `repos/${repo}/private-vulnerability-reporting`, undefined, "private vulnerability reporting on (see SECURITY.md)");
   api("PATCH", `repos/${repo}/code-scanning/default-setup`, { state: "configured", query_suite: "default", languages: ["actions", "javascript-typescript", "python"] }, "CodeQL code scanning on (Worker, scripts and workflow files)");
 
