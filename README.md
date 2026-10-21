@@ -111,9 +111,9 @@ The diagram is pinned to this repository on GitHub, so every source reference li
 An animated cartoon garden follows the controller, not the buttons you press:
 
 - **Idle**: a sunflower swaying under the real sky (sun, moon and stars, clouds, bee), and the next watering time.
-- **Watering**: the drip line along the ground lights up, water runs down the tube and drips from each emitter, but only
-  once the controller has confirmed the valve open. The valve box at the end of the line shows a green light while open. Clicking "Water now" changes nothing on screen until the run state comes back.
-- **Soaking**: the drips stop, the view slides down to the soil, and droplets seep towards the roots while the moisture
+- **Watering**: a little robot gardener rolls in and tilts its watering can over the sunflower, but only once the
+  controller has confirmed the valve open. Clicking "Water now" changes nothing on screen until the run state comes back.
+- **Soaking**: the robot leaves, the view slides down to the soil, and droplets seep towards the roots while the moisture
   spreads in step with the soak countdown.
 - **Rain**: rain falls only when it is raining now (from the current conditions), with puddles and a darker sky. A rain
   *forecast* on a sunny day only shows the "Rain delay active" notice and why.

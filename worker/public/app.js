@@ -76,17 +76,16 @@ function buildScene() {
   for (let i = 0; i < 26; i++) {
     el("ellipse", { cx: rand() * 400, cy: 282 + rand() * 150, rx: 2 + rand() * 4, ry: 1.6 + rand() * 3, fill: rand() > 0.5 ? "#8c6a4d" : "#33211a", opacity: 0.55 }, soil);
   }
-  // slow drips from each emitter: they fall straight down onto the soil and ripple where they land
-  [140, 168, 300, 328].forEach((ex, n) => {
-    for (let k = 0; k < 2; k++) {
-      const dur = 1.15 + n * 0.07;
-      const delay = -(dur * k / 2 + n * 0.23);
-      const at = el("g", { transform: `translate(${ex} 247)` }, $("drops"));
-      const y = el("g", { class: "drop-y", style: `--dur:${dur}s;--delay:${delay}s;--fall:19px` }, at);
-      el("use", { href: "#drop", transform: "scale(.7)" }, y);
-      el("ellipse", { class: "splash", cx: ex, cy: 267, rx: 6, ry: 1.8, style: `--dur:${dur}s;--delay:${delay}s` }, $("splashes"));
-    }
-  });
+  // water thrown from the can's spout on a curved path: x is linear, y accelerates
+  for (let i = 0; i < 14; i++) {
+    const dx = -(6 + ((i * 7) % 30));
+    const dur = 0.7 + (i % 4) * 0.06;
+    const delay = -(i * 0.09);
+    const x = el("g", { class: "drop-x", style: `--dx:${dx}px;--dur:${dur}s;--delay:${delay}s` }, $("drops"));
+    const y = el("g", { class: "drop-y", style: `--dur:${dur}s;--delay:${delay}s;--fall:81px` }, x);
+    el("use", { href: "#drop", transform: `scale(${0.75 + (i % 3) * 0.2})` }, y);
+    el("ellipse", { class: "splash", cx: 172 + dx, cy: 269, rx: 8, ry: 2.4, style: `--dur:${dur}s;--delay:${delay}s` }, $("splashes"));
+  }
   // falling rain
   for (let i = 0; i < 34; i++) {
     const g = el("g", { transform: `translate(${(i * 13.7) % 430} 56)` }, $("streaks"));
