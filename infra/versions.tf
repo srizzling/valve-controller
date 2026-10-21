@@ -20,25 +20,27 @@ terraform {
     }
   }
 
-  # State holds every secret (tokens, local key). Keep it somewhere private. Local state is fine for one person
-  # on one machine; for anything else use an encrypted remote backend, for example a private R2 bucket:
-  #
-  # backend "s3" {
-  #   bucket = "valve-tfstate"
-  #   key    = "terraform.tfstate"
-  #   region = "auto"
-  #   endpoints                   = { s3 = "https://<account-id>.r2.cloudflarestorage.com" }
-  #   skip_credentials_validation = true
-  #   skip_region_validation      = true
-  #   skip_requesting_account_id  = true
-  #   skip_metadata_api_check     = true
-  #   use_path_style              = true
-  # }
+  # State holds every secret (tokens, local key), so it lives in a private R2 bucket, not in git.
+  # The account-specific endpoint is in backend.hcl and the R2 keys come from the environment:
+  #   terraform init -backend-config=backend.hcl      (see the Makefile and README)
+  # Settings below are the ones Cloudflare documents for R2. No state locking: it is one person running one apply at a time.
+  backend "s3" {
+    bucket                      = "valve-controller-tfstate"
+    key                         = "infra/terraform.tfstate"
+    region                      = "auto"
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_region_validation      = true
+    skip_requesting_account_id  = true
+    skip_s3_checksum            = true
+    use_path_style              = true
+  }
 }
 
 # Reads CLOUDFLARE_API_TOKEN from the environment.
 # Token permissions: Account > Workers Scripts:Edit, Cloudflare Tunnel:Edit, Access: Apps and Policies:Edit;
-# Zone > DNS:Edit, Workers Routes:Edit (on your zone).
+# Zone > DNS:Edit, Workers Routes:Edit (on your zone). Creating the state bucket (make bootstrap) also needs
+# Account > Workers R2 Storage:Edit; Terraform itself reaches the bucket with the separate R2 keys.
 provider "cloudflare" {}
 
 provider "healthchecksio" {

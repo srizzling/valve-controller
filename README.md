@@ -96,9 +96,12 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 ```sh
 cd infra
 cp terraform.tfvars.example terraform.tfvars        # fill in your account, zone, hostnames, email
+cp backend.hcl.example backend.hcl                  # put your Cloudflare account id in the endpoint
 export CLOUDFLARE_API_TOKEN=...                      # see versions.tf for the permissions it needs
 export TF_VAR_healthchecks_api_key=...
 export TF_VAR_tuya_local_key=...                     # only if docker_host is set
+make bootstrap                                       # one time: creates the private state bucket
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # the R2 token's keys, see "State" below
 make init && make apply                              # builds the Worker bundle, then applies
 ```
 
@@ -112,9 +115,23 @@ Still manual, because there is no API for them:
 - The Google Home developer console project. `terraform output google_home` prints every value to paste into it.
 - Subscribing to the ntfy topic (`terraform output ntfy_topic`).
 
+### State
+
+Terraform state holds every secret (tunnel secret, agent token, signing key, the Tuya local key), so it is never
+committed. It lives in a private Cloudflare R2 bucket, `valve-controller-tfstate`, through Terraform's S3 backend.
+
+1. `make bootstrap` creates the bucket (once).
+2. In the dashboard go to R2 > Manage R2 API tokens > Create API token, give it **Object Read & Write** on that bucket
+   only, and export its two values as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Keep them in your password
+   manager, not in a file in the repo.
+3. `make init` reads the endpoint from `backend.hcl` (git-ignored, it only holds your account id).
+
+There is no state locking, so run one `apply` at a time. A new machine only needs those two keys, `backend.hcl` and
+`terraform.tfvars`. To move an existing local state into the bucket, run `terraform init -migrate-state
+-backend-config=backend.hcl`.
+
 Terraform is the source of truth for the Worker's variables and secrets. `worker/wrangler.jsonc` is only used for
 `wrangler dev` and for building the bundle, so do not `wrangler deploy` as well: it would replace what Terraform set.
-The state file holds every secret. Keep it private, or use the encrypted backend sketched in `infra/versions.tf`.
 
 ## Setup by hand
 
