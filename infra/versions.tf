@@ -18,7 +18,7 @@ terraform {
 
   # State holds every secret (tokens, local key), so it lives in a private R2 bucket, not in git.
   # The account-specific endpoint is in backend.hcl and the R2 keys come from the environment:
-  #   terraform init -backend-config=backend.hcl      (see the Makefile and README)
+  #   terraform init -backend-config=backend.hcl      (see the Makefile and docs/setup.md)
   # Settings below are the ones Cloudflare documents for R2. No state locking: it is one person running one apply at a time.
   backend "s3" {
     bucket                      = "valve-controller-tfstate"

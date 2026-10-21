@@ -19,5 +19,5 @@ tuya_device_id      = ""
 tuya_switch_code    = "switch_1"
 tuya_countdown_code = "countdown_1"
 
-# Leave this out (false) for the very first apply, then set it to true. See the README, "First deploy".
+# Leave this out (false) for the very first apply, then set it to true. See docs/setup.md, "First deploy".
 # durable_object_ready = true

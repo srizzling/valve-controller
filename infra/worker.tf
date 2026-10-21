@@ -69,7 +69,7 @@ resource "cloudflare_worker_version" "valve" {
   # The Durable Object class is created by a migration, and a version cannot bind to a class that does not exist yet.
   # So the first apply (durable_object_ready = false) deploys the migration without the binding, and the second
   # (true) adds the binding and drops the migration. The provider's declarative `exports` setting would do this in one
-  # step, but v5.28 fails to convert it. See the README ("First deploy").
+  # step, but v5.28 fails to convert it. See docs/setup.md ("First deploy").
   migrations = var.durable_object_ready ? null : {
     new_tag            = "v1"
     new_sqlite_classes = ["Controller"]

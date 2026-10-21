@@ -1,0 +1,30 @@
+# The valve and the Tuya login
+
+The Worker controls the valve the way the Smart Life app does. `worker/src/tuya.ts` is a port of Tuya's MIT-licensed
+`tuya-device-sharing-sdk` (the library behind Home Assistant's Tuya integration). It is tested against that library's own
+output, and against an independent mock of Tuya's server.
+
+- **Opening** sends the on/off command together with the valve's own **countdown** set to the run length plus 90 seconds,
+  then asks the valve to confirm it reports open. If the Worker or Cloudflare ever stops, the valve closes itself. That is
+  the failsafe. A valve with no countdown function runs without one (`tuya_countdown_code = ""`).
+- **The login** is created once by scanning a QR code (below) and is kept in the Worker's private storage. Tuya rotates
+  the refresh token each time it is used, so the Worker saves the new one every time and is the only thing that refreshes it.
+- **If the login stops working** (revoked in the app, or unused for too long), the check ten minutes before each scheduled
+  run sends a priority 5 ntfy saying so. Run `scripts/tuya-login.py` again and apply Terraform.
+
+This relies on an API Tuya does not document for third parties, and signs in with Home Assistant's registered client id
+because Tuya has not registered one for this project. It is stable while Home Assistant depends on it, but Tuya could
+change it. The alternative is a Tuya developer project (documented, but needs setup and periodic renewal).
+
+**Getting the login.** Open the Smart Life app and copy your **User Code** (Me > settings gear > Account and Security >
+User Code) into `infra/.env` as `TUYA_USER_CODE`. Then:
+
+```sh
+python scripts/tuya-login.py   # inside the devenv shell, which has the Python packages
+```
+
+It shows a QR code to scan in the app (Me > the scan icon), finds the valve (category `sfkzq`, or `--device <id>`),
+prints what it can do, and saves the login to `infra/.env` and the valve's id and data point codes to
+`infra/terraform.tfvars`. The login is **not** signed out: the Worker uses it. It can control every Tuya device on your
+account until revoked (Smart Life app > Me > settings > Account and Security). It lives in `infra/.env` (mode 600),
+Terraform state and the Worker's storage.

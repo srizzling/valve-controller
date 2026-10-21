@@ -1,6 +1,6 @@
 # value-controller
 
-Cycle-and-soak controller for a Tuya water valve. See README.md for the architecture and setup.
+Cycle-and-soak controller for a Tuya water valve. See README.md for an overview and docs/ for the valve, setup, CI and development.
 
 ## Architecture diagram
 
