@@ -3,11 +3,11 @@ import type { Env } from "./env";
 import { ping } from "./heartbeat";
 import type { Signal } from "./heartbeat";
 import { notify } from "./ntfy";
-import { advance, dueSchedule, defaultConfig, idleState, nextRunAt, normalizeConfig, startRun, wateredSoFar } from "./plan";
+import { advance, dueEntry, dueSchedule, defaultConfig, idleState, nextRunAt, normalizeConfig, startRun, wateredSoFar } from "./plan";
 import type { Config, RunState, Trigger } from "./plan";
 import { placeOf } from "./place";
 import { rainVerdict } from "./rain";
-import { inputsAt, smartPlan } from "./smart";
+import { extraRunWanted, inputsAt, smartPlan } from "./smart";
 import { TuyaAuthError } from "./tuya";
 import { getWeather } from "./weather";
 import type { WeatherBundle } from "./weather";
@@ -121,10 +121,10 @@ export class Controller extends DurableObject<Env> {
         await this.ctx.storage.put("lastPreflightKey", upcoming);
         await this.preflight(upcoming.slice(-5));
       }
-      const key = dueSchedule(config, now, placeOf(this.env));
-      if (!key || (await this.ctx.storage.get("lastScheduleKey")) === key) return;
-      await this.ctx.storage.put("lastScheduleKey", key);
-      await this.doStart("schedule");
+      const due = dueEntry(config, now, placeOf(this.env));
+      if (!due || (await this.ctx.storage.get("lastScheduleKey")) === due.key) return;
+      await this.ctx.storage.put("lastScheduleKey", due.key);
+      await this.doStart("schedule", due.entry.onlyIfEtMm);
     });
   }
 
@@ -175,7 +175,8 @@ export class Controller extends DurableObject<Env> {
     });
   }
 
-  private async doStart(trigger: Trigger): Promise<{ ok: boolean; message: string }> {
+  /** `extraRunEtMm`: set for a start time that is an extra run, which only goes ahead when today's ET is at least that. */
+  private async doStart(trigger: Trigger, extraRunEtMm?: number): Promise<{ ok: boolean; message: string }> {
     if ((await this.getState()).phase !== "idle") return { ok: false, message: "already running" };
     const config = await this.getConfig();
     const now = Date.now();
@@ -191,6 +192,11 @@ export class Controller extends DurableObject<Env> {
         weather = await getWeather(this.env, now);
       } catch (e) {
         weatherProblem = message(e);
+      }
+      if (extraRunEtMm !== undefined) {
+        // An extra run is only wanted on a hot day. Not wanted, or no way to tell, means nothing happens: no record, no alert.
+        const want = weather ? extraRunWanted(extraRunEtMm, inputsAt(weather.forecast, now, this.env.TIMEZONE).etMm) : "unknown";
+        if (want !== "yes") return { ok: true, message: `extra run not needed (${want === "no" ? `ET is below ${extraRunEtMm} mm` : "no ET forecast"})` };
       }
       if (!weather) {
         rainNote = ` Weather check failed (${weatherProblem}), so your normal cycles apply.`;

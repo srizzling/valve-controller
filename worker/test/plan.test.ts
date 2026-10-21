@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advance, defaultConfig, dueSchedule, idleState, nextRunAt, normalizeConfig, scheduledRunsOn, startRun, validateConfig, wateredSoFar } from "../src/plan";
+import { advance, defaultConfig, dueEntry, dueSchedule, idleState, nextRunAt, normalizeConfig, scheduledRunsOn, startRun, validateConfig, wateredSoFar } from "../src/plan";
 import { sunTimes } from "../src/sun";
 import { rainVerdict } from "../src/rain";
 import type { Forecast } from "../src/rain";
@@ -176,6 +176,23 @@ describe("sunset schedule", () => {
     expect(() => validateConfig({ ...defaultConfig, schedules: [{ days: [1], at: "dusk", time: "00:00", afterSunsetMin: 300 }] })).toThrow(/afterSunsetMin/);
     const c = validateConfig({ ...defaultConfig, schedules: [{ days: [1], at: "dusk", time: "ignored", afterSunsetMin: -30 }] });
     expect(c.schedules[0]).toEqual({ days: [1], at: "dusk", time: "00:00", afterSunsetMin: -30 });
+  });
+});
+
+describe("extra runs", () => {
+  it("returns the entry that is due, with its ET condition", () => {
+    const cfg = { ...config, schedules: [{ days: [3], time: "06:00" }, { days: [3], time: "18:00", onlyIfEtMm: 6 }] };
+    const evening = Date.UTC(2026, 9, 21, 7, 0); // Wed 18:00 Melbourne (UTC+11)
+    expect(dueEntry(cfg, evening, place)).toMatchObject({ key: "2026-10-21 18:00", entry: { onlyIfEtMm: 6 } });
+    expect(dueEntry(cfg, evening - 12 * 3_600_000, place)?.entry.onlyIfEtMm).toBeUndefined();
+  });
+
+  it("validates and keeps the ET limit", () => {
+    const sched = (onlyIfEtMm: number) => ({ ...defaultConfig, schedules: [{ days: [1], at: "clock", time: "18:00", onlyIfEtMm }] });
+    expect(() => validateConfig(sched(0.1))).toThrow(/onlyIfEtMm/);
+    expect(() => validateConfig(sched(50))).toThrow(/onlyIfEtMm/);
+    expect(validateConfig(sched(6)).schedules[0].onlyIfEtMm).toBe(6);
+    expect(validateConfig({ ...defaultConfig, schedules: [{ days: [1], at: "clock", time: "18:00" }] }).schedules[0]).not.toHaveProperty("onlyIfEtMm");
   });
 });
 

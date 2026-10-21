@@ -8,6 +8,7 @@ export interface ScheduleEntry {
   time: string; // "HH:MM" in the configured timezone (ignored for dawn and dusk)
   beforeSunriseMin?: number; // for dawn: how long before sunrise to start
   afterSunsetMin?: number; // for dusk: minutes after sunset to start, negative for before
+  onlyIfEtMm?: number; // an extra run: only starts when the day's evapotranspiration is at least this (mm)
 }
 
 export interface RainConfig {
@@ -128,6 +129,7 @@ export function validateConfig(input: unknown): Config {
     if (s.at === "clock" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.time)) throw new Error(`bad schedule time: ${s.time}`);
     if (s.at === "dawn") num(s.beforeSunriseMin, "schedule beforeSunriseMin", 0, 180);
     if (s.at === "dusk") num(s.afterSunsetMin, "schedule afterSunsetMin", -180, 180);
+    if (s.onlyIfEtMm !== undefined) num(s.onlyIfEtMm, "schedule onlyIfEtMm", 0.5, 20);
     if (!Array.isArray(s.days) || s.days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
       throw new Error("schedule days must be integers 0-6");
     }
@@ -152,7 +154,7 @@ export function validateConfig(input: unknown): Config {
     onMinutes: num(c.onMinutes, "onMinutes", 0.1, 60),
     soakMinutes: num(c.soakMinutes, "soakMinutes", 0, 240),
     cycles: num(c.cycles, "cycles", 1, 20),
-    schedules: schedules.map((s) => ({ days: [...new Set(s.days)].sort(), at: s.at, time: s.at === "clock" ? s.time : "00:00", ...(s.at === "dawn" ? { beforeSunriseMin: s.beforeSunriseMin } : {}), ...(s.at === "dusk" ? { afterSunsetMin: s.afterSunsetMin } : {}) })),
+    schedules: schedules.map((s) => ({ days: [...new Set(s.days)].sort(), at: s.at, time: s.at === "clock" ? s.time : "00:00", ...(s.at === "dawn" ? { beforeSunriseMin: s.beforeSunriseMin } : {}), ...(s.at === "dusk" ? { afterSunsetMin: s.afterSunsetMin } : {}), ...(s.onlyIfEtMm !== undefined ? { onlyIfEtMm: s.onlyIfEtMm } : {}) })),
     rain: {
       enabled: r.enabled !== false,
       probabilityPct: num(r.probabilityPct, "rain.probabilityPct", 0, 100),
@@ -244,17 +246,22 @@ export function entryStart(entry: ScheduleEntry, y: number, m: number, d: number
   return Math.floor(t / 60_000) * 60_000;
 }
 
-/** Returns a unique key like "2026-10-21 06:00" if a schedule entry is due this minute. */
-export function dueSchedule(config: Config, now: number, place: Place): string | null {
+/** The schedule entry that is due this minute, with a unique key like "2026-10-21 06:00", or null. */
+export function dueEntry(config: Config, now: number, place: Place): { key: string; entry: ScheduleEntry } | null {
   if (!config.enabled) return null;
   const { day, date } = localParts(now, place.timeZone);
   const [y, m, d] = date.split("-").map(Number);
   for (const s of config.schedules) {
     if (!s.days.includes(day)) continue;
     const start = entryStart(s, y, m, d, place);
-    if (start !== null && Math.floor(start / 60_000) === Math.floor(now / 60_000)) return `${date} ${localParts(start, place.timeZone).time}`;
+    if (start !== null && Math.floor(start / 60_000) === Math.floor(now / 60_000)) return { key: `${date} ${localParts(start, place.timeZone).time}`, entry: s };
   }
   return null;
+}
+
+/** Returns a unique key like "2026-10-21 06:00" if a schedule entry is due this minute. */
+export function dueSchedule(config: Config, now: number, place: Place): string | null {
+  return dueEntry(config, now, place)?.key ?? null;
 }
 
 /** The next scheduled start after `now` (epoch ms), or null when nothing is scheduled. */
@@ -273,14 +280,19 @@ export function nextRunAt(config: Config, now: number, place: Place): number | n
   return best;
 }
 
-/** Every scheduled start (epoch ms) on a local calendar date "YYYY-MM-DD", earliest first. */
-export function scheduledRunsOn(config: Config, date: string, place: Place): number[] {
+/** Every scheduled start on a local calendar date "YYYY-MM-DD" with the entry behind it, earliest first. */
+export function scheduledEntriesOn(config: Config, date: string, place: Place): { at: number; entry: ScheduleEntry }[] {
   if (!config.enabled) return [];
   const [y, m, d] = date.split("-").map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   return config.schedules
     .filter((s) => s.days.includes(weekday))
-    .map((s) => entryStart(s, y, m, d, place))
-    .filter((t): t is number => t !== null)
-    .sort((a, b) => a - b);
+    .map((entry) => ({ at: entryStart(entry, y, m, d, place), entry }))
+    .filter((r): r is { at: number; entry: ScheduleEntry } => r.at !== null)
+    .sort((a, b) => a.at - b.at);
+}
+
+/** Every scheduled start (epoch ms) on a local calendar date "YYYY-MM-DD", earliest first. */
+export function scheduledRunsOn(config: Config, date: string, place: Place): number[] {
+  return scheduledEntriesOn(config, date, place).map((r) => r.at);
 }

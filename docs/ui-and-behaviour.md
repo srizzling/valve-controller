@@ -37,6 +37,9 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
   Sunrise and sunset are worked out from your latitude and longitude, so they follow the seasons. You can have as many
   start times as you like, for example one before sunrise and one before sunset. Each run is scaled by the weather on
   its own, so two runs on a hot day both get the extra cycles.
+- A start time can be an **extra run**: set "only if ET ≥ X mm" and it only happens on days the forecast ET reaches X.
+  On a milder day it does nothing, leaves no history entry and sends no alert, and the 7-day outlook leaves it out. If
+  there is no ET forecast for the day, it does not run. Leave the field empty for a run that happens every day.
 - Every change of the valve is confirmed by reading its state back. If Tuya can't be reached when a phase changes, it
   retries twice (30s apart), then aborts the run, tries to close the valve and sends a high-priority ntfy.
 - Using the Smart Life app while a run is going is safe for the valve (its own countdown still applies), but the

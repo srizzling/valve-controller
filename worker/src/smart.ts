@@ -81,3 +81,13 @@ export function smartPlan(cfg: SmartConfig, baseCycles: number, input: SmartInpu
   const count = cycles === baseCycles ? `${cycles} cycle${cycles === 1 ? "" : "s"}, same as normal` : `${cycles} cycle${cycles === 1 ? "" : "s"} instead of ${baseCycles}`;
   return { run: true, cycles, percent, reasons: [`${day}${soil}. That is ${percent}% of normal${capped}: ${count}.`] };
 }
+
+/**
+ * Whether an extra run (a start time with "only when ET is at least X mm") is wanted that day.
+ * "unknown" when there is no ET figure for the day, which the caller treats as not wanted.
+ */
+export function extraRunWanted(onlyIfEtMm: number | undefined, etMm: number | undefined): "yes" | "no" | "unknown" {
+  if (onlyIfEtMm === undefined) return "yes";
+  if (etMm === undefined) return "unknown";
+  return etMm >= onlyIfEtMm ? "yes" : "no";
+}

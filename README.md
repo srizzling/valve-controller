@@ -50,7 +50,7 @@ Object with alarms), the weather checks, the valve client, ntfy, and Google Home
 - **Cycle and soak:** waters N minutes, soaks M, repeats. The valve's own countdown closes it if Cloudflare ever stops.
 - **Rain check:** a scheduled run is skipped when rain is forecast.
 - **Weather smarts:** the number of cycles scales with evapotranspiration and soil moisture, and wind, frost or wet soil skip the run.
-- **Start times:** a clock time, or relative to sunrise or sunset, as many as you like.
+- **Start times:** a clock time, or relative to sunrise or sunset, as many as you like. Any of them can be an extra run that only happens on a hot day.
 - **Alerts:** ntfy for every run, plus a missed-run alert from healthchecks.io and warnings for an expired login, an offline valve and a low battery.
 - **Control:** a web UI behind Cloudflare Access, or Google Home.
 

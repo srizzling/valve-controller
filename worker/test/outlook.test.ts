@@ -95,6 +95,29 @@ describe("plannedRuns with weather scaling", () => {
     expect(plannedRuns(config, "2026-10-22", wetAndRainy, [], now, tz)[0].state).toBe("skip");
   });
 
+  describe("an extra run that only happens on a hot day", () => {
+    const withExtra = { ...config, schedules: [{ days: [4], time: "06:00" }, { days: [4], time: "18:00", onlyIfEtMm: 6 }] }; // Thursday
+    it("is in the outlook when ET reaches the limit", () => {
+      const runs = plannedRuns(withExtra, "2026-10-22", mk({ etByDate: { "2026-10-22": 6.2 } }), [], now, tz);
+      expect(runs).toHaveLength(2);
+      expect(runs.every((r) => r.state === "will-run")).toBe(true);
+    });
+    it("is left out when the day is not hot enough", () => {
+      const runs = plannedRuns(withExtra, "2026-10-22", mk({ etByDate: { "2026-10-22": 5.9 } }), [], now, tz);
+      expect(runs).toHaveLength(1);
+    });
+    it("is shown as not forecast yet when there is no ET for that day", () => {
+      const runs = plannedRuns(withExtra, "2026-10-22", mk({ etByDate: {} }), [], now, tz);
+      expect(runs[1]).toMatchObject({ state: "unknown" });
+      expect(runs[1].reason).toMatch(/6 mm or more/);
+    });
+    it("leaves no 'no record' behind for a past extra run that did not happen", () => {
+      const later = Date.UTC(2026, 9, 22, 12, 0); // Thursday 23:00 local, both starts have passed
+      const runs = plannedRuns(withExtra, "2026-10-22", mk({}), [], later, tz);
+      expect(runs.map((r) => r.state)).toEqual(["no-record"]);
+    });
+  });
+
   it("treats a past run skipped for the weather as skipped, not as missing", () => {
     const at = runAt - 24 * HOUR;
     const entry: HistoryEntry = { at, trigger: "schedule", outcome: "skipped-weather", wateredSeconds: 0, note: "Soil is wet" };

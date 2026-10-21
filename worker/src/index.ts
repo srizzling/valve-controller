@@ -39,21 +39,24 @@ api.get("/weather", async (c) => {
   const status = await controller(c.env).getStatus();
   try {
     const { data, forecast } = await getWeather(c.env);
+    const now = Date.now();
+    const daily = data.daily.map((d) => ({ ...d, runs: plannedRuns(status.config, d.date, forecast, status.history, now, placeOf(c.env)) }));
+    const runs = daily.flatMap((d) => d.runs);
+    // Extra runs that the forecast says are not needed are not in the outlook, so the next run is the first one that is.
+    const upcoming = runs.filter((r) => r.at > now).sort((x, y) => x.at - y.at)[0];
+    const nextAt = status.nextRunAt && upcoming && upcoming.at > status.nextRunAt ? upcoming.at : status.nextRunAt;
     let nextRun: { at: number; verdict: RainVerdict | null; note?: string; planned?: PlannedRun } | null = null;
-    if (status.nextRunAt) {
-      nextRun = { at: status.nextRunAt, verdict: null };
+    if (nextAt) {
+      nextRun = { at: nextAt, verdict: null, planned: runs.find((r) => r.at === nextAt) };
       if (!status.config.rain.enabled) nextRun.verdict = { skip: false, reason: "rain check is off" };
       else {
         try {
-          nextRun.verdict = rainVerdict(forecast, status.config.rain, status.nextRunAt);
+          nextRun.verdict = rainVerdict(forecast, status.config.rain, nextAt);
         } catch (e) {
           nextRun.note = e instanceof Error ? e.message : "no forecast for that time";
         }
       }
     }
-    const now = Date.now();
-    const daily = data.daily.map((d) => ({ ...d, runs: plannedRuns(status.config, d.date, forecast, status.history, now, placeOf(c.env)) }));
-    if (nextRun && status.nextRunAt) nextRun.planned = daily.flatMap((d) => d.runs).find((r) => r.at === status.nextRunAt);
     return c.json({ ...data, daily, nextRun });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "weather unavailable" }, 502);

@@ -363,4 +363,9 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .sched .kind { font: inherit; color: var(--text); background: #0f1a2c; border: 1px solid #26385a; border-radius: 12px; padding: 10px 8px; }
 .sched .lead { width: 190px; }
 .sched .lead em { white-space: nowrap; }
+.sched .only { flex: 1 0 100%; width: auto; padding-left: 12px; }
+.sched .only em { white-space: nowrap; }
+.sched .only input { width: 90px; flex: none; padding-left: 8px; }
+.sched .only em:first-child { flex: none; }
+.sched .only em:last-child { margin-left: auto; }
 .sched .lead input { padding-left: 12px; }

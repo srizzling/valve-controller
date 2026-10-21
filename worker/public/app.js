@@ -100,7 +100,7 @@ const cyclesLabel = (n) => `${n} cycle${n === 1 ? "" : "s"}`;
 
 function demoData(name) {
   const now = Date.now();
-  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
+  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30, onlyIfEtMm: 5.5 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
     smart: { enabled: true, referenceEtMm: 4.5, cropFactor: 1, minPercent: 25, maxPercent: 150, soilDryBelow: 0.2, soilWetAbove: 0.35, wind: { enabled: true, maxKmh: 30 }, frost: { enabled: true, belowC: 2 } } };
   const idle = { phase: "idle", cycle: 0, cycles: 0, onSeconds: 0, soakSeconds: 0, phaseStartedAt: 0, phaseEndsAt: 0 };
   const running = (phase, left) => ({ phase, cycle: 2, cycles: 3, onSeconds: 600, soakSeconds: 300, phaseStartedAt: now - ((phase === "watering" ? 600 : 300) - left) * 1000, phaseEndsAt: now + left * 1000 });
@@ -116,7 +116,7 @@ function demoData(name) {
   const wet = "rain likely: 78% chance, 4.0 mm in the next 6h";
   const demoRuns = [
     () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Hot, dry day (ET 5.9 mm, 131% of normal), soil dry (0.18). That is 131% of normal: 4 cycles instead of 3." }, { at: at(0) + 11 * 3600000, state: "will-run", reason: dry, cycles: 3, percent: 100, scaling: "Typical day (ET 4.5 mm, 100% of normal), soil dry (0.20). That is 100% of normal: 3 cycles, same as normal." }],
-    () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool or humid day (ET 2.8 mm, 62% of normal), soil damp (0.27). That is 62% of normal: 2 cycles instead of 3." }, { at: at(1) + 11 * 3600000, state: "will-run", reason: dry, cycles: 1, percent: 33, scaling: "Cool or humid day (ET 2.8 mm, 62% of normal), soil damp (0.27). That is 33% of normal: 1 cycle instead of 3." }],
+    () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool or humid day (ET 2.8 mm, 62% of normal), soil damp (0.27). That is 62% of normal: 2 cycles instead of 3." }],
     () => run(2, "skip", wet),
     () => [],
     () => [{ at: at(4), state: "skip-weather", reason: "Soil is wet (0.38 m³/m³), so no watering is needed. Weather: low (ET 1.9 mm)." }],
@@ -190,9 +190,10 @@ function renderTicking() {
   } else if (!status.nextRunAt) {
     big = "No start times"; sub = "Add one in Cycle & schedule.";
   } else {
-    big = when(status.nextRunAt);
+    const nextAt = weather?.nextRun?.at ?? status.nextRunAt; // the weather view skips extra runs that are not needed
+    big = when(nextAt);
     const scaled = planned?.state === "will-run" && planned.cycles;
-    sub = `in ${relative(status.nextRunAt - now)} · ${cyclesLabel(scaled ? planned.cycles : config.cycles)} of ${minutesLabel(config.onMinutes)}, ${minutesLabel(config.soakMinutes)} soak between${scaled && planned.percent !== 100 ? ` (${planned.percent}% of normal)` : ""}`;
+    sub = `in ${relative(nextAt - now)} · ${cyclesLabel(scaled ? planned.cycles : config.cycles)} of ${minutesLabel(config.onMinutes)}, ${minutesLabel(config.soakMinutes)} soak between${scaled && planned.percent !== 100 ? ` (${planned.percent}% of normal)` : ""}`;
     if (delayed) { pillText = "Rain delay active"; pillClass = "pill-delay"; }
     else if (planned?.state === "skip-weather") { pillText = "Skipping: weather"; pillClass = "pill-delay"; }
     else if (weather?.current.isRaining) { pillText = "Raining"; pillClass = "pill-raining"; }
@@ -406,6 +407,14 @@ function renderSchedules() {
     mins.onchange = () => setSun(s, kindOf(s), Number(mins.value));
     lead.append(mins, Object.assign(document.createElement("em"), { textContent: kindOf(s) === "dusk-after" ? "min after" : "min before" }));
     const when = s.at === "dawn" || s.at === "dusk" ? lead : time;
+    // an extra run: leave empty to run every day, or set the ET (mm) the day must reach
+    const only = document.createElement("div");
+    only.className = "num only";
+    only.title = "Leave empty to run on every selected day. Set a number to make this an extra run that only happens on hot days.";
+    const et = Object.assign(document.createElement("input"), { type: "number", min: 0.5, max: 20, step: "any", inputmode: "decimal", placeholder: "any day", value: s.onlyIfEtMm ?? "" });
+    et.setAttribute("aria-label", "Only when evapotranspiration is at least this many mm");
+    et.onchange = () => { if (et.value === "") delete s.onlyIfEtMm; else s.onlyIfEtMm = Number(et.value); };
+    only.append(Object.assign(document.createElement("em"), { textContent: "Extra run: only if ET ≥" }), et, Object.assign(document.createElement("em"), { textContent: "mm" }));
     const chips = document.createElement("div");
     chips.className = "chips";
     DAYS.forEach((name, d) => {
@@ -419,7 +428,7 @@ function renderSchedules() {
     const del = Object.assign(document.createElement("button"), { type: "button", className: "x", textContent: "✕", title: "Remove" });
     del.setAttribute("aria-label", "Remove start time");
     del.onclick = () => { schedules.splice(i, 1); renderSchedules(); };
-    row.append(kind, when, chips, del);
+    row.append(kind, when, chips, del, only);
     box.append(row);
   });
 }
