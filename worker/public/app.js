@@ -52,15 +52,17 @@ function buildScene() {
   for (let i = 0; i < 26; i++) {
     el("ellipse", { cx: rand() * 400, cy: 282 + rand() * 150, rx: 2 + rand() * 4, ry: 1.6 + rand() * 3, fill: rand() > 0.5 ? "#8c6a4d" : "#33211a", opacity: 0.55 }, soil);
   }
-  // spray from the hose nozzle on a curved path: x is linear, y accelerates
-  for (let i = 0; i < 24; i++) {
-    const dx = -(8 + ((i * 5) % 46));
-    const dur = 0.55 + (i % 4) * 0.05;
-    const delay = -(i * 0.07);
+  // spray from the hose nozzle: a fine fan of small droplets thrown out and down, with a faint mist where it leaves the nozzle
+  el("path", { class: "mist", d: "M0 0 L-38 0 L-62 30 L-36 38Z", filter: "url(#softMist)" }, $("drops"));
+  for (let i = 0; i < 44; i++) {
+    const dx = -(26 + ((i * 11) % 52));
+    const dur = 0.42 + (i % 5) * 0.04;
+    const delay = -(i * 0.043);
+    const fall = 88 + ((i * 7) % 20);
     const x = el("g", { class: "drop-x", style: `--dx:${dx}px;--dur:${dur}s;--delay:${delay}s` }, $("drops"));
-    const y = el("g", { class: "drop-y", style: `--dur:${dur}s;--delay:${delay}s;--fall:98px` }, x);
-    el("use", { href: "#drop", transform: `scale(${0.5 + (i % 3) * 0.15})` }, y);
-    el("ellipse", { class: "splash", cx: 206 + dx, cy: 269, rx: 6, ry: 1.9, style: `--dur:${dur}s;--delay:${delay}s` }, $("splashes"));
+    const y = el("g", { class: "drop-y spray", style: `--dur:${dur}s;--delay:${delay}s;--fall:${fall}px` }, x);
+    el("circle", { r: 1.1 + (i % 3) * 0.35 }, y);
+    if (i % 3 === 0) el("ellipse", { class: "splash", cx: 206 + dx, cy: 269, rx: 5, ry: 1.6, style: `--dur:${dur}s;--delay:${delay}s` }, $("splashes"));
   }
   // falling rain
   for (let i = 0; i < 34; i++) {

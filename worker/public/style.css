@@ -303,6 +303,9 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .scene[data-wet="on"] .bloom { animation-duration: 1.5s; }
 .drop-x { animation: dropx var(--dur) linear infinite; animation-delay: var(--delay); }
 .drop-y { animation: dropy var(--dur) cubic-bezier(.45, 0, 1, 1) infinite; animation-delay: var(--delay); fill: #4cc9f0; stroke: #d7f6ff; stroke-width: .8; }
+.drop-y.spray { fill: #d4f1ff; stroke: none; }
+.mist { fill: #d9f3ff; opacity: .3; animation: mist .3s ease-in-out infinite alternate; }
+.scene:not([data-valve="watering"]) .mist { animation-play-state: paused; }
 .splash { transform-box: fill-box; transform-origin: center; fill: none; stroke: #bff0ff; stroke-width: 1.6; opacity: 0; animation: splash var(--dur) linear infinite; animation-delay: var(--delay); }
 .scene:not([data-valve="watering"]) .pour * { animation-play-state: paused; }
 
@@ -333,6 +336,7 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 @keyframes wig { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
 @keyframes armfar { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes mist { from { opacity: .18; } to { opacity: .38; } }
 @keyframes dropx { from { transform: translateX(0); } to { transform: translateX(var(--dx)); } }
 @keyframes dropy { 0% { transform: translateY(0); opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { transform: translateY(var(--fall)); opacity: 0; } }
 @keyframes splash { 0%, 84% { opacity: 0; transform: scale(.2); } 86% { opacity: .95; } 100% { opacity: 0; transform: scale(1.9); } }
