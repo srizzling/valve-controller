@@ -282,26 +282,19 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .wing { transform-box: fill-box; transform-origin: bottom; animation: flap .12s linear infinite alternate; }
 .w2 { animation-delay: -.06s; }
 
-/* robot gardener: it is the valve, so it only shows up and pours while the valve is confirmed open */
-.robot { opacity: 0; transform: translate(470px, 268px); transition: opacity .5s ease, transform 1.4s cubic-bezier(.3, 1.2, .5, 1); }
-.scene[data-valve="watering"] .robot { opacity: 1; transform: translate(338px, 268px); }
-.robot-bob { animation: robotbob 2.4s ease-in-out infinite; }
-.robot-head { transform-origin: 0px -104px; animation: robothead 3.2s ease-in-out infinite alternate; }
-.antenna { transform-box: fill-box; transform-origin: bottom; animation: wig 1.3s ease-in-out infinite alternate; }
-.a2 { animation-delay: -.6s; }
-.robot-eyes { transform-box: fill-box; transform-origin: center; animation: blink 4.6s infinite; }
-.arm-far { transform-origin: 30px -88px; animation: armfar 2.4s ease-in-out infinite alternate; }
-.robot-can { transform: translate(-66px, -84px) rotate(0deg) scale(.46) translate(-62px, 0px); transition: transform 1.1s cubic-bezier(.3, 1.4, .5, 1) .6s; }
-.scene[data-valve="watering"] .robot-can { transform: translate(-66px, -84px) rotate(-24deg) scale(.46) translate(-62px, 0px); }
+/* drip line: the valve box lights up and water runs along the tube while the valve is confirmed open */
+.valve-led { fill: #7b8499; transition: fill .4s ease; }
+.scene[data-valve="watering"] .valve-led { fill: #38e07b; filter: drop-shadow(0 0 3px #38e07b); }
+.flow { opacity: 0; transition: opacity .4s ease; animation: flow .8s linear infinite; }
+.scene[data-valve="watering"] .flow { opacity: .95; }
+.scene:not([data-valve="watering"]) .flow { animation-play-state: paused; }
 
 .pour { opacity: 0; transition: opacity .3s ease; }
 .scene[data-valve="watering"] .pour { opacity: 1; transition: opacity .5s ease 1.3s; }
-.stream { display: none; }
 
 /* flower bed */
 .bloom { animation: bloom 3.6s ease-in-out infinite alternate; }
 .scene[data-wet="on"] .bloom { animation-duration: 1.5s; }
-.drop-x { animation: dropx var(--dur) linear infinite; animation-delay: var(--delay); }
 .drop-y { animation: dropy var(--dur) cubic-bezier(.45, 0, 1, 1) infinite; animation-delay: var(--delay); fill: #4cc9f0; stroke: #d7f6ff; stroke-width: .8; }
 .splash { transform-box: fill-box; transform-origin: center; fill: none; stroke: #bff0ff; stroke-width: 1.6; opacity: 0; animation: splash var(--dur) linear infinite; animation-delay: var(--delay); }
 .scene:not([data-valve="watering"]) .pour * { animation-play-state: paused; }
@@ -328,12 +321,8 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 @keyframes drift { from { transform: translateX(-200px); } to { transform: translateX(640px); } }
 @keyframes bank { from { transform: translateX(-14px); } to { transform: translateX(14px); } }
 @keyframes bloom { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
-@keyframes robotbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
-@keyframes robothead { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
-@keyframes wig { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
-@keyframes armfar { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes dropx { from { transform: translateX(0); } to { transform: translateX(var(--dx)); } }
+@keyframes flow { to { stroke-dashoffset: -16; } }
 @keyframes dropy { 0% { transform: translateY(0); opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { transform: translateY(var(--fall)); opacity: 0; } }
 @keyframes splash { 0%, 84% { opacity: 0; transform: scale(.2); } 86% { opacity: .95; } 100% { opacity: 0; transform: scale(1.9); } }
 @keyframes streak { 0% { transform: translate(0, 0); opacity: 0; } 10% { opacity: .75; } 90% { opacity: .75; } 100% { transform: translate(-26px, 205px); opacity: 0; } }
