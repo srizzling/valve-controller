@@ -65,8 +65,7 @@ change it. The alternative is a Tuya developer project (documented, but needs se
 User Code) into `infra/.env` as `TUYA_USER_CODE`. Then:
 
 ```sh
-python3 -m venv scripts/.venv && scripts/.venv/bin/pip install -r scripts/requirements.txt   # once
-scripts/.venv/bin/python scripts/tuya-login.py
+python scripts/tuya-login.py   # inside the devenv shell, which has the Python packages
 ```
 
 It shows a QR code to scan in the app (Me > the scan icon), finds the valve (category `sfkzq`, or `--device <id>`),
@@ -335,9 +334,13 @@ add `ntfy_token` to lock it down.
 
 ## Development
 
+The toolchain comes from [devenv](https://devenv.sh) (`devenv.nix`): Node, Python with the script requirements,
+Terraform and `gh`. With direnv, `direnv allow` once and the shell loads itself. Without it, `devenv shell`.
+
 ```sh
-cd worker && npm install && npm test && npm run typecheck
-python3 -m venv scripts/.venv && scripts/.venv/bin/pip install -r scripts/requirements.txt && scripts/.venv/bin/python -m unittest discover -s scripts/tests
+devenv test                              # typecheck, the Worker tests, the Python tests, a Terraform check
+cd worker && npm test && npm run typecheck
+python -m unittest discover -s scripts/tests
 ```
 
 For `wrangler dev`, copy `worker/.dev.vars.example` to `worker/.dev.vars`; it sets `DEV_BYPASS_ACCESS=true`, which must

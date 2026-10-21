@@ -16,3 +16,7 @@ Never edit the HTML by hand.
 The Worker controls the valve through Tuya's cloud (`worker/src/tuya.ts`, `valve.ts`); there is nothing at home.
 Never run `wrangler deploy`: Terraform owns the Worker. `scripts/github-setup.mjs` manages repo settings, branch
 protection and Actions secrets. `scripts/tuya-login.py` creates the Tuya login the Worker uses.
+
+## Environment
+
+Node, Python, Terraform and `gh` come from `devenv.nix` (direnv loads it). Add any new tool there, not globally.

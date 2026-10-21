@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Signs in to Tuya the way Home Assistant does, and hands the login to the Worker. No developer project needed.
 
-    scripts/.venv/bin/python scripts/tuya-login.py [--user-code CODE] [--device DEVICE_ID] [--dry-run]
+    python scripts/tuya-login.py   (inside the devenv shell) [--user-code CODE] [--device DEVICE_ID] [--dry-run]
 
 You need your Smart Life (or Tuya Smart) app's User Code: Me > settings gear > Account and Security > User Code.
 Put it in infra/.env as TUYA_USER_CODE, or pass --user-code.
