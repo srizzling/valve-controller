@@ -7,6 +7,7 @@ const demo = params.get("demo");
 
 let status = null;
 let weather = null;
+let valve = null; // {online, open, batteryPct} from Tuya, or {error}
 let skew = 0; // server clock minus browser clock, so countdowns hold up with a wrong local clock
 let schedules = [];
 let busy = false;
@@ -476,6 +477,32 @@ async function refreshWeather() {
   }
 }
 
+function renderValve() {
+  const chip = $("valve-chip");
+  if (!valve) return;
+  chip.hidden = false;
+  if (valve.error) {
+    chip.className = "chip warn";
+    chip.textContent = "🚰 valve unreachable";
+    chip.title = valve.error;
+  } else {
+    chip.className = `chip${valve.online ? "" : " warn"}`;
+    const battery = valve.batteryPct === undefined ? "" : ` · 🔋 ${valve.batteryPct}%`;
+    chip.textContent = `🚰 ${valve.online ? "online" : "offline"}${battery}`;
+    chip.title = valve.open ? "The valve reports open" : "The valve reports closed";
+  }
+}
+
+// One Tuya call, not one per status poll: the valve's own state changes rarely and Tuya's API is rate limited.
+async function refreshValve() {
+  try {
+    valve = await api("/valve");
+  } catch (e) {
+    valve = { error: e.message };
+  }
+  renderValve();
+}
+
 async function act(path, okText) {
   busy = true;
   if (status) renderButtons();
@@ -489,6 +516,7 @@ async function act(path, okText) {
     // the scene only changes once the controller reports the valve state, never on the click itself
     await refreshStatus();
     refreshWeather();
+    refreshValve();
   }
 }
 
@@ -520,6 +548,8 @@ if (demo) {
   const d = demoData(demo);
   status = d.status;
   weather = d.weather;
+  valve = { online: true, open: demo === "watering", batteryPct: 92 };
+  renderValve();
   setConn(true, `Demo: ${demo}`);
   fillForm(status.config);
   renderAll();
@@ -527,8 +557,10 @@ if (demo) {
 } else {
   refreshStatus(true);
   refreshWeather();
+  refreshValve();
+  setInterval(() => !document.hidden && refreshValve(), 5 * 60000);
   setInterval(() => !document.hidden && refreshStatus(), 4000);
   setInterval(() => !document.hidden && refreshWeather(), 5 * 60000);
   setInterval(renderTicking, 1000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshStatus(); refreshWeather(); } });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshStatus(); refreshWeather(); refreshValve(); } });
 }
