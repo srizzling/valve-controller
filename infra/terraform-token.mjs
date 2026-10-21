@@ -77,8 +77,12 @@ let zoneResources;
 const zoneName = fromTfvars("zone_name");
 let zone;
 if (zoneName && zoneName !== "example.com") {
-  const r = await cf("GET", `/zones?name=${encodeURIComponent(zoneName)}&account.id=${account}`);
-  zone = r.success ? r.result?.[0] : undefined;
+  // The setup token often cannot read zones, so also try the Terraform token if there already is one.
+  for (const token of [setupToken, env.CLOUDFLARE_API_TOKEN].filter(Boolean)) {
+    const r = await cf("GET", `/zones?name=${encodeURIComponent(zoneName)}&account.id=${account}`, undefined, token);
+    zone = r.success ? r.result?.[0] : undefined;
+    if (zone) break;
+  }
 }
 if (zone) {
   zoneResources = { [`com.cloudflare.api.account.zone.${zone.id}`]: "*" };
