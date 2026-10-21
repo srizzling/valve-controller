@@ -1,8 +1,12 @@
 // Pure scheduling logic. No I/O, so it is easy to test.
 
+import { sunTimes } from "./sun";
+
 export interface ScheduleEntry {
   days: number[]; // 0 = Sunday ... 6 = Saturday
-  time: string; // "HH:MM" in the configured timezone
+  at?: "clock" | "dawn"; // missing means clock, so configs saved before dawn starts existed still work
+  time: string; // "HH:MM" in the configured timezone (ignored for dawn)
+  beforeSunriseMin?: number; // for dawn: how long before sunrise to start
 }
 
 export interface RainConfig {
@@ -12,6 +16,19 @@ export interface RainConfig {
   lookaheadHours: number;
 }
 
+/** Scales a scheduled run's number of cycles by the weather. Your on and soak minutes are never changed. */
+export interface SmartConfig {
+  enabled: boolean;
+  referenceEtMm: number; // the day's ET (mm) at which your normal cycles apply
+  cropFactor: number; // multiplies ET: roughly 1 for pots and beds, about 0.8 for lawn
+  minPercent: number; // run only if the scaled amount is at least this percent of normal, else skip
+  maxPercent: number; // never water more than this percent of normal
+  soilDryBelow: number; // modelled soil moisture (m3/m3) at or below which the soil counts as dry
+  soilWetAbove: number; // at or above which it counts as wet and the run is skipped
+  wind: { enabled: boolean; maxKmh: number }; // skip when it is windier than this at the start
+  frost: { enabled: boolean; belowC: number }; // skip when it is colder than this at the start
+}
+
 export interface Config {
   enabled: boolean;
   onMinutes: number;
@@ -19,6 +36,13 @@ export interface Config {
   cycles: number;
   schedules: ScheduleEntry[];
   rain: RainConfig;
+  smart: SmartConfig;
+}
+
+export interface Place {
+  timeZone: string;
+  latitude: number;
+  longitude: number;
 }
 
 export const defaultConfig: Config = {
@@ -26,9 +50,33 @@ export const defaultConfig: Config = {
   onMinutes: 10,
   soakMinutes: 5,
   cycles: 3,
-  schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], time: "06:00" }],
+  schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "clock", time: "06:00" }],
   rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
+  smart: {
+    enabled: true,
+    referenceEtMm: 4.5,
+    cropFactor: 1,
+    minPercent: 25,
+    maxPercent: 150,
+    soilDryBelow: 0.2,
+    soilWetAbove: 0.35,
+    wind: { enabled: true, maxKmh: 30 },
+    frost: { enabled: true, belowC: 2 },
+  },
 };
+
+/** Fill in anything a saved config predates, so adding a setting never breaks an existing install. */
+export function normalizeConfig(stored: unknown): Config {
+  const c = (stored ?? {}) as Partial<Config>;
+  const d = defaultConfig;
+  return {
+    ...d,
+    ...c,
+    schedules: (c.schedules ?? d.schedules).map((s) => ({ at: "clock" as const, ...s })),
+    rain: { ...d.rain, ...c.rain },
+    smart: { ...d.smart, ...c.smart, wind: { ...d.smart.wind, ...c.smart?.wind }, frost: { ...d.smart.frost, ...c.smart?.frost } },
+  };
+}
 
 export type Trigger = "schedule" | "manual" | "google";
 
@@ -61,45 +109,62 @@ export const idleState: RunState = {
 };
 
 export function validateConfig(input: unknown): Config {
-  const c = input as Partial<Config> | null;
-  if (!c || typeof c !== "object") throw new Error("config must be an object");
-  const int = (v: unknown, name: string, min: number, max: number) => {
+  const c = normalizeConfig(input);
+  if (!input || typeof input !== "object") throw new Error("config must be an object");
+  const num = (v: unknown, name: string, min: number, max: number) => {
     if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) {
       throw new Error(`${name} must be a number between ${min} and ${max}`);
     }
     return v;
   };
-  const rain = (c.rain ?? {}) as Partial<RainConfig>;
   const schedules = c.schedules;
   if (!Array.isArray(schedules) || schedules.length > 20) throw new Error("schedules must be a list of up to 20 entries");
   for (const s of schedules) {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(s?.time)) throw new Error(`bad schedule time: ${s?.time}`);
+    if (s.at !== "clock" && s.at !== "dawn") throw new Error(`bad schedule type: ${s.at}`);
+    if (s.at === "clock" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.time)) throw new Error(`bad schedule time: ${s.time}`);
+    if (s.at === "dawn") num(s.beforeSunriseMin, "schedule beforeSunriseMin", 0, 180);
     if (!Array.isArray(s.days) || s.days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
       throw new Error("schedule days must be integers 0-6");
     }
   }
+  const r = c.rain;
+  const m = c.smart;
+  const smart: SmartConfig = {
+    enabled: m.enabled !== false,
+    referenceEtMm: num(m.referenceEtMm, "smart.referenceEtMm", 0.5, 15),
+    cropFactor: num(m.cropFactor, "smart.cropFactor", 0.2, 2),
+    minPercent: num(m.minPercent, "smart.minPercent", 0, 100),
+    maxPercent: num(m.maxPercent, "smart.maxPercent", 50, 300),
+    soilDryBelow: num(m.soilDryBelow, "smart.soilDryBelow", 0.05, 0.6),
+    soilWetAbove: num(m.soilWetAbove, "smart.soilWetAbove", 0.05, 0.6),
+    wind: { enabled: m.wind.enabled !== false, maxKmh: num(m.wind.maxKmh, "smart.wind.maxKmh", 5, 120) },
+    frost: { enabled: m.frost.enabled !== false, belowC: num(m.frost.belowC, "smart.frost.belowC", -10, 10) },
+  };
+  if (smart.soilWetAbove <= smart.soilDryBelow) throw new Error("smart.soilWetAbove must be higher than smart.soilDryBelow");
+  if (smart.maxPercent < smart.minPercent) throw new Error("smart.maxPercent must not be below smart.minPercent");
   return {
     enabled: c.enabled !== false,
-    onMinutes: int(c.onMinutes, "onMinutes", 0.1, 60),
-    soakMinutes: int(c.soakMinutes, "soakMinutes", 0, 240),
-    cycles: int(c.cycles, "cycles", 1, 20),
-    schedules: schedules.map((s) => ({ days: [...new Set(s.days)].sort(), time: s.time })),
+    onMinutes: num(c.onMinutes, "onMinutes", 0.1, 60),
+    soakMinutes: num(c.soakMinutes, "soakMinutes", 0, 240),
+    cycles: num(c.cycles, "cycles", 1, 20),
+    schedules: schedules.map((s) => ({ days: [...new Set(s.days)].sort(), at: s.at, time: s.at === "dawn" ? "00:00" : s.time, ...(s.at === "dawn" ? { beforeSunriseMin: s.beforeSunriseMin } : {}) })),
     rain: {
-      enabled: rain.enabled !== false,
-      probabilityPct: int(rain.probabilityPct, "rain.probabilityPct", 0, 100),
-      mm: int(rain.mm, "rain.mm", 0, 100),
-      lookaheadHours: int(rain.lookaheadHours, "rain.lookaheadHours", 1, 48),
+      enabled: r.enabled !== false,
+      probabilityPct: num(r.probabilityPct, "rain.probabilityPct", 0, 100),
+      mm: num(r.mm, "rain.mm", 0, 100),
+      lookaheadHours: num(r.lookaheadHours, "rain.lookaheadHours", 1, 48),
     },
+    smart,
   };
 }
 
-export function startRun(config: Config, trigger: Trigger, now: number): RunState {
+export function startRun(config: Config, trigger: Trigger, now: number, cycles: number = config.cycles): RunState {
   const onSeconds = Math.round(config.onMinutes * 60);
   return {
     phase: "watering",
     trigger,
     cycle: 1,
-    cycles: config.cycles,
+    cycles,
     onSeconds,
     soakSeconds: Math.round(config.soakMinutes * 60),
     startedAt: now,
@@ -145,14 +210,6 @@ function localParts(now: number, timeZone: string) {
   return { day, date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
 }
 
-/** Returns a unique key like "2026-10-21 06:00" if a schedule entry is due this minute. */
-export function dueSchedule(config: Config, now: number, timeZone: string): string | null {
-  if (!config.enabled) return null;
-  const { day, date, time } = localParts(now, timeZone);
-  const hit = config.schedules.some((s) => s.time === time && s.days.includes(day));
-  return hit ? `${date} ${time}` : null;
-}
-
 function tzOffsetMs(ts: number, timeZone: string): number {
   const p = new Intl.DateTimeFormat("en-US", {
     timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
@@ -170,33 +227,54 @@ export function localToUtc(y: number, m: number, d: number, hh: number, mm: numb
   return utc;
 }
 
+/** When one schedule entry starts on a local calendar date, or null if it cannot (no sunrise that day). */
+export function entryStart(entry: ScheduleEntry, y: number, m: number, d: number, place: Place): number | null {
+  if (entry.at !== "dawn") {
+    const [hh, mm] = entry.time.split(":").map(Number);
+    return localToUtc(y, m - 1, d, hh, mm, place.timeZone);
+  }
+  const sun = sunTimes(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`, place.latitude, place.longitude);
+  if (!sun) return null;
+  return Math.floor((sun.sunrise - (entry.beforeSunriseMin ?? 0) * 60_000) / 60_000) * 60_000;
+}
+
+/** Returns a unique key like "2026-10-21 06:00" if a schedule entry is due this minute. */
+export function dueSchedule(config: Config, now: number, place: Place): string | null {
+  if (!config.enabled) return null;
+  const { day, date } = localParts(now, place.timeZone);
+  const [y, m, d] = date.split("-").map(Number);
+  for (const s of config.schedules) {
+    if (!s.days.includes(day)) continue;
+    const start = entryStart(s, y, m, d, place);
+    if (start !== null && Math.floor(start / 60_000) === Math.floor(now / 60_000)) return `${date} ${localParts(start, place.timeZone).time}`;
+  }
+  return null;
+}
+
 /** The next scheduled start after `now` (epoch ms), or null when nothing is scheduled. */
-export function nextRunAt(config: Config, now: number, timeZone: string): number | null {
+export function nextRunAt(config: Config, now: number, place: Place): number | null {
   if (!config.enabled || config.schedules.length === 0) return null;
-  const [y, m, d] = localParts(now, timeZone).date.split("-").map(Number);
+  const [y, m, d] = localParts(now, place.timeZone).date.split("-").map(Number);
   let best: number | null = null;
   for (let i = 0; i <= 7; i++) {
     const day = new Date(Date.UTC(y, m - 1, d + i));
     for (const s of config.schedules) {
       if (!s.days.includes(day.getUTCDay())) continue;
-      const [hh, mm] = s.time.split(":").map(Number);
-      const t = localToUtc(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), hh, mm, timeZone);
-      if (t > now && (best === null || t < best)) best = t;
+      const t = entryStart(s, day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), place);
+      if (t !== null && t > now && (best === null || t < best)) best = t;
     }
   }
   return best;
 }
 
 /** Every scheduled start (epoch ms) on a local calendar date "YYYY-MM-DD", earliest first. */
-export function scheduledRunsOn(config: Config, date: string, timeZone: string): number[] {
+export function scheduledRunsOn(config: Config, date: string, place: Place): number[] {
   if (!config.enabled) return [];
   const [y, m, d] = date.split("-").map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   return config.schedules
     .filter((s) => s.days.includes(weekday))
-    .map((s) => {
-      const [hh, mm] = s.time.split(":").map(Number);
-      return localToUtc(y, m - 1, d, hh, mm, timeZone);
-    })
+    .map((s) => entryStart(s, y, m, d, place))
+    .filter((t): t is number => t !== null)
     .sort((a, b) => a - b);
 }

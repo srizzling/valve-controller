@@ -4,6 +4,12 @@ export interface Forecast {
   time: string[]; // ISO, UTC, no offset ("2026-10-21T04:00")
   precipitation_probability: (number | null)[];
   precipitation: (number | null)[];
+  // Extra series for the weather-scaled watering, in the same order as `time`. Optional so the rain check does not care.
+  temperatureC?: (number | null)[];
+  windKmh?: (number | null)[];
+  soilMoistureShallow?: (number | null)[]; // 0 to 7 cm, m3/m3
+  soilMoistureDeep?: (number | null)[]; // 7 to 28 cm, m3/m3
+  etByDate?: Record<string, number>; // local date "YYYY-MM-DD" -> reference evapotranspiration, mm
 }
 
 export interface RainVerdict {

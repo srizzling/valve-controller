@@ -101,12 +101,23 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 
 ## Behaviour
 
-- Settings (water minutes, soak minutes, number of cycles, start times, rain thresholds) live in the UI. A run
+- Settings (water minutes, soak minutes, number of cycles, start times, rain and weather thresholds) live in the UI. A run
   snapshots them at start, so editing mid-run changes nothing until the next run.
 - A run is `cycles` watering periods with a soak between each. It ends after the last watering period (no trailing soak).
 - Rain check applies to **scheduled** runs only: skip if any hour in the lookahead window is at or above the
   probability threshold, or the forecast total reaches the mm threshold. If the forecast can't be fetched it waters
   anyway and says so in the notification. Starting from the UI or by voice always runs.
+- Weather smarts (scheduled runs only, on by default): your minutes per cycle and soak stay fixed, and the **number of
+  cycles** scales with the weather. Open-Meteo gives the day's evapotranspiration (ET: the water lost to heat, sun, wind
+  and dry air) and modelled soil moisture. `percent = 100 × (ET × plant factor / normal ET) × dryness`, capped at your
+  maximum, and `cycles = round(your cycles × percent / 100)` (at least 1). Below your minimum percent, or with wet soil,
+  the run is skipped. Frost (cold at the start) and wind gates skip a run whatever the scaling says. Every decision and
+  its reason goes in the ntfy message, the history and the UI, and the 7-day outlook shows the planned cycles per day.
+  All thresholds are in the UI. Defaults suit pots and beds (normal ET 4.5 mm, plant factor 1); the soil model is on
+  a roughly 10 km grid, so treat it as a guide. The forecast is the only input: if it is unavailable the normal
+  cycles run.
+- A start time can be a clock time or "N minutes before sunrise" (worked out from your latitude and longitude, so it
+  follows the seasons).
 - Every change of the valve is confirmed by reading its state back. If Tuya can't be reached when a phase changes, it
   retries twice (30s apart), then aborts the run, tries to close the valve and sends a high-priority ntfy.
 - Using the Smart Life app while a run is going is safe for the valve (its own countdown still applies), but the

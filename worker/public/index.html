@@ -255,6 +255,23 @@
           <label class="field"><span>Or rain ≥</span><div class="num"><input type="number" id="mm" min="0" step="any" inputmode="decimal"><em>mm</em></div></label>
         </div>
         <p class="muted small">Only scheduled runs check the forecast. Starting by hand always waters. Set mm to 0 to ignore the amount.</p>
+
+        <h3>Weather smarts</h3>
+        <label class="switch"><input type="checkbox" id="smartEnabled"><span>Scale the number of cycles by the weather</span></label>
+        <p class="muted small">Your minutes per cycle and soak never change. A hot, dry day runs more cycles, a cool or damp one fewer, and wet soil skips the run.</p>
+        <div class="grid3">
+          <label class="field"><span>Normal ET</span><div class="num"><input type="number" id="referenceEtMm" min="0.5" max="15" step="any" inputmode="decimal"><em>mm</em></div></label>
+          <label class="field"><span>Plant factor</span><div class="num"><input type="number" id="cropFactor" min="0.2" max="2" step="any" inputmode="decimal"><em>×</em></div></label>
+          <label class="field"><span>Skip below</span><div class="num"><input type="number" id="minPercent" min="0" max="100" inputmode="numeric"><em>%</em></div></label>
+          <label class="field"><span>Never above</span><div class="num"><input type="number" id="maxPercent" min="50" max="300" inputmode="numeric"><em>%</em></div></label>
+          <label class="field"><span>Soil dry at</span><div class="num"><input type="number" id="soilDryBelow" min="0.05" max="0.6" step="0.01" inputmode="decimal"><em>m³</em></div></label>
+          <label class="field"><span>Soil wet at</span><div class="num"><input type="number" id="soilWetAbove" min="0.05" max="0.6" step="0.01" inputmode="decimal"><em>m³</em></div></label>
+        </div>
+        <p class="muted small">ET is the water the garden loses in a day to heat, dryness, wind and sun. "Normal ET" is the day that gets your usual cycles. Pots and beds are about 1.0, lawn about 0.8.</p>
+        <label class="switch"><input type="checkbox" id="windEnabled"><span>Skip when it is windy</span></label>
+        <div class="grid3"><label class="field"><span>Wind above</span><div class="num"><input type="number" id="windMaxKmh" min="5" max="120" inputmode="numeric"><em>km/h</em></div></label></div>
+        <label class="switch"><input type="checkbox" id="frostEnabled"><span>Skip when it is cold</span></label>
+        <div class="grid3"><label class="field"><span>Colder than</span><div class="num"><input type="number" id="frostBelowC" min="-10" max="10" step="any" inputmode="decimal"><em>°C</em></div></label></div>
         <div class="actions"><button class="btn btn-primary" type="submit">Save</button></div>
       </form>
     </details>

@@ -7,6 +7,7 @@ export interface Env {
   TUYA_SWITCH_CODE?: string; // data point that opens and closes the valve (default switch_1)
   TUYA_COUNTDOWN_CODE?: string; // data point for the valve-side auto-close (default countdown_1, empty if none)
   TIMEZONE: string;
+  WEATHER_BASE_URL?: string; // tests only: point at a fake Open-Meteo
   LATITUDE: string;
   LONGITUDE: string;
   NTFY_URL: string;

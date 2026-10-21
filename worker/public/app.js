@@ -121,7 +121,8 @@ const minutesLabel = (m) => `${Math.round(m * 10) / 10} min`;
 
 function demoData(name) {
   const now = Date.now();
-  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], time: "06:00" }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 } };
+  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
+    smart: { enabled: true, referenceEtMm: 4.5, cropFactor: 1, minPercent: 25, maxPercent: 150, soilDryBelow: 0.2, soilWetAbove: 0.35, wind: { enabled: true, maxKmh: 30 }, frost: { enabled: true, belowC: 2 } } };
   const idle = { phase: "idle", cycle: 0, cycles: 0, onSeconds: 0, soakSeconds: 0, phaseStartedAt: 0, phaseEndsAt: 0 };
   const running = (phase, left) => ({ phase, cycle: 2, cycles: 3, onSeconds: 600, soakSeconds: 300, phaseStartedAt: now - ((phase === "watering" ? 600 : 300) - left) * 1000, phaseEndsAt: now + left * 1000 });
   const state = name === "watering" ? running("watering", 372) : name === "soaking" ? running("soaking", 171) : idle;
@@ -135,11 +136,11 @@ function demoData(name) {
   const dry = "5% chance, 0.0 mm in the next 6h";
   const wet = "rain likely: 78% chance, 4.0 mm in the next 6h";
   const demoRuns = [
-    () => run(0, rain ? "skip" : "will-run", rain ? wet : dry),
-    () => run(1, rain ? "skip" : "will-run", rain ? wet : dry),
+    () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Warm and dry: 4 cycles instead of 3 (ET 5.9 mm, soil dry 0.18)." }],
+    () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool day: 2 cycles instead of 3 (ET 2.8 mm, soil damp 0.27)." }],
     () => run(2, "skip", wet),
     () => [],
-    () => run(4, "will-run", dry),
+    () => [{ at: at(4), state: "skip-weather", reason: "Soil is wet (0.38 m³/m³), so no watering is needed. Weather: low (ET 1.9 mm)." }],
     () => run(5, "unknown", "the forecast does not reach this far yet"),
     () => [],
   ];
@@ -151,9 +152,10 @@ function demoData(name) {
     weather: {
       fetchedAt: now,
       current: { temperatureC: rain ? 12.6 : 21.4, feelsLikeC: rain ? 10.8 : 20.1, humidityPct: rain ? 88 : 54, windKmh: rain ? 24 : 11, cloudCoverPct: rain ? 100 : 15, rainLastHourMm: rain ? 2.4 : 0, isDay: name !== "night", isRaining: name === "rain", condition: name === "night" ? cond("Clear", "clear", "🌙") : name === "delay" ? sunny : c },
+      etTodayMm: rain ? 1.8 : 5.9, soilMoisture: rain ? 0.36 : 0.18,
       past24hMm: rain ? 8.4 : 0.6, next24hMm: rain ? 11.2 : 0.4, rainChanceNext24hPct: rain ? 85 : 20,
       daily: days.map((date, i) => ({ runs: demoRuns[i](date), date, condition: i === 1 && rain ? rainy : i === 3 ? grey : sunny, tMaxC: 22 - i, tMinC: 11 + (i % 3), rainMm: [0.4, rain ? 11.2 : 0.2, 3.1, 0, 0, 6.5, 1.2][i], chancePct: [20, rain ? 85 : 15, 55, 5, 0, 70, 30][i] })),
-      nextRun: { at: now + 8.2 * 3600000, verdict: rain ? { skip: true, reason: "rain likely: 85% chance, 6.2 mm in the next 6h" } : { skip: false, reason: "20% chance, 0.2 mm in the next 6h" } },
+      nextRun: { at: now + 8.2 * 3600000, planned: rain ? undefined : { at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Warm and dry: 4 cycles instead of 3 (ET 5.9 mm, soil dry 0.18)." }, verdict: rain ? { skip: true, reason: "rain likely: 85% chance, 6.2 mm in the next 6h" } : { skip: false, reason: "20% chance, 0.2 mm in the next 6h" } },
     },
   };
 }
@@ -190,6 +192,7 @@ function renderTicking() {
   const panel = document.querySelector(".panel");
   const verdict = weather?.nextRun?.verdict;
   const delayed = !!verdict?.skip;
+  const planned = weather?.nextRun?.planned;
 
   const pill = $("pill");
   const bar = $("bar");
@@ -209,8 +212,10 @@ function renderTicking() {
     big = "No start times"; sub = "Add one in Cycle & schedule.";
   } else {
     big = when(status.nextRunAt);
-    sub = `in ${relative(status.nextRunAt - now)} · ${config.cycles} × ${minutesLabel(config.onMinutes)} with ${minutesLabel(config.soakMinutes)} soaks`;
+    const scaled = planned?.state === "will-run" && planned.cycles;
+    sub = `in ${relative(status.nextRunAt - now)} · ${scaled ? planned.cycles : config.cycles} × ${minutesLabel(config.onMinutes)} with ${minutesLabel(config.soakMinutes)} soaks${scaled && planned.percent !== 100 ? ` (${planned.percent}% of normal)` : ""}`;
     if (delayed) { pillText = "Rain delay active"; pillClass = "pill-delay"; }
+    else if (planned?.state === "skip-weather") { pillText = "Skipping: weather"; pillClass = "pill-delay"; }
     else if (weather?.current.isRaining) { pillText = "Raining"; pillClass = "pill-raining"; }
   }
   panel.dataset.mode = mode;
@@ -245,16 +250,22 @@ function renderNotice() {
   const verdict = weather?.nextRun?.verdict;
   const config = status.config;
   const last = status.history[0];
-  const lastSkip = last && last.outcome === "skipped-rain" && nowMs() - last.at < 24 * 3600000;
+  const planned = weather?.nextRun?.planned;
+  const lastSkip = last && (last.outcome === "skipped-rain" || last.outcome === "skipped-weather") && nowMs() - last.at < 24 * 3600000;
   let html = "", cls = "";
   if (status.state.phase !== "idle") {
     html = ""; // nothing to explain while watering
   } else if (config.enabled && verdict?.skip) {
     cls = "delay";
     html = `<b>Rain delay active.</b> The ${when(weather.nextRun.at)} run will be skipped: ${esc(verdict.reason)}.${weather.current.isRaining ? "" : " It is dry right now."}`;
+  } else if (config.enabled && planned?.state === "skip-weather") {
+    cls = "delay";
+    html = `<b>Next run will be skipped.</b> ${esc(planned.reason)}`;
   } else if (weather?.current.isRaining) {
     cls = "delay";
     html = `It is raining right now, so the garden is getting a free drink. The next run is still on.`;
+  } else if (config.enabled && planned?.state === "will-run" && planned.percent !== 100 && planned.scaling) {
+    html = `<b>Weather-adjusted.</b> ${esc(planned.scaling)}`;
   } else if (lastSkip) {
     cls = "delay";
     html = `<b>Last run skipped.</b> ${esc(last.note)}.`;
@@ -275,17 +286,24 @@ function renderButtons() {
   $("start").textContent = busy ? "Starting…" : "Water now";
 }
 
-const RUN_ICON = { "will-run": "💧", skip: "⏸️", unknown: "❔", done: "✅", "skipped-earlier": "⏸️", failed: "⚠️", "no-record": "❔" };
-const RUN_TEXT = { "will-run": "will water", skip: "will skip for rain", unknown: "not forecast yet", done: "watered", "skipped-earlier": "skipped for rain", failed: "failed", "no-record": "no record" };
+const RUN_ICON = { "will-run": "💧", skip: "⏸️", "skip-weather": "🌡️", unknown: "❔", done: "✅", "skipped-earlier": "⏸️", failed: "⚠️", "no-record": "❔" };
+const RUN_TEXT = { "will-run": "will water", skip: "will skip for rain", "skip-weather": "will skip for the weather", unknown: "not forecast yet", done: "watered", "skipped-earlier": "skipped", failed: "failed", "no-record": "no record" };
 
 /** One badge per day: do we water, skip, or have nothing scheduled? */
 function waterBadge(runs) {
   if (!runs?.length) return { cls: "none", icon: "·", short: "No run", text: "nothing scheduled" };
   const watering = runs.filter((r) => r.state === "will-run" || r.state === "done");
-  const skipping = runs.filter((r) => r.state === "skip" || r.state === "skipped-earlier");
+  const skipping = runs.filter((r) => r.state === "skip" || r.state === "skip-weather" || r.state === "skipped-earlier");
   const n = runs.length;
-  if (watering.length === n) return { cls: "waters", icon: runs[0].state === "done" ? "✅" : "💧", short: runs[0].state === "done" ? "Done" : "Waters", text: `waters${n > 1 ? ` ${n} times` : ""}` };
-  if (skipping.length === n) return { cls: "skips", icon: "⏸️", short: "Skips", text: "skipped for rain" };
+  if (watering.length === n) {
+    const cycles = runs.every((r) => r.cycles) ? runs.reduce((sum, r) => sum + r.cycles, 0) : 0;
+    const done = runs[0].state === "done";
+    return { cls: "waters", icon: done ? "✅" : "💧", short: done ? "Done" : cycles ? `${cycles}×` : "Waters", text: cycles ? `waters ${cycles} cycle${cycles === 1 ? "" : "s"}` : `waters${n > 1 ? ` ${n} times` : ""}` };
+  }
+  if (skipping.length === n) {
+    const weatherOnly = runs.every((r) => r.state === "skip-weather");
+    return { cls: "skips", icon: weatherOnly ? "🌡️" : "⏸️", short: "Skips", text: weatherOnly ? "skipped for the weather" : "skipped for rain" };
+  }
   if (watering.length && skipping.length) return { cls: "waters", icon: "💧", short: `${watering.length} of ${n}`, text: `${watering.length} of ${n} runs water` };
   const first = runs[0];
   return { cls: "unsure", icon: RUN_ICON[first.state], short: first.state === "failed" ? "Failed" : "Maybe", text: RUN_TEXT[first.state] };
@@ -294,7 +312,7 @@ function waterBadge(runs) {
 function dayDetail(d, i) {
   const label = i === 0 ? "Today" : new Intl.DateTimeFormat([], { weekday: "long", timeZone: "UTC" }).format(new Date(`${d.date}T12:00:00Z`));
   if (!d.runs?.length) return `<b>${label}:</b> nothing is scheduled.`;
-  return `<b>${label}:</b> ` + d.runs.map((r) => `${esc(when(r.at))} ${RUN_ICON[r.state]} ${RUN_TEXT[r.state]}${r.reason ? ` <span class="muted">(${esc(r.reason)})</span>` : ""}`).join("<br>");
+  return `<b>${label}:</b> ` + d.runs.map((r) => `${esc(when(r.at))} ${RUN_ICON[r.state]} ${RUN_TEXT[r.state]}${r.cycles ? `: ${r.cycles} cycles` : ""}${r.reason ? ` <span class="muted">(${esc(r.reason)})</span>` : ""}`).join("<br>");
 }
 
 function renderWeather() {
@@ -305,7 +323,10 @@ function renderWeather() {
   const v = weather.nextRun;
   let verdictHtml = `<div class="verdict none"><span class="ico">💤</span><div><b>No upcoming run</b><span>Add a start time or switch scheduled runs on.</span></div></div>`;
   if (v) {
-    if (v.verdict?.skip) verdictHtml = `<div class="verdict skip"><span class="ico">⏸️</span><div><b>${when(v.at)} will be skipped</b><span>${esc(v.verdict.reason)}</span></div></div>`;
+    const p = v.planned;
+    if (p?.state === "skip-weather") verdictHtml = `<div class="verdict skip"><span class="ico">🌡️</span><div><b>${when(v.at)} will be skipped</b><span>${esc(p.reason)}</span></div></div>`;
+    else if (p?.state === "will-run" && p.cycles) verdictHtml = `<div class="verdict go"><span class="ico">✅</span><div><b>${when(v.at)} will run ${p.cycles} cycle${p.cycles === 1 ? "" : "s"}${p.percent !== 100 ? ` (${p.percent}% of normal)` : ""}</b><span>${esc(p.reason)}</span></div></div>`;
+    else if (v.verdict?.skip) verdictHtml = `<div class="verdict skip"><span class="ico">⏸️</span><div><b>${when(v.at)} will be skipped</b><span>${esc(v.verdict.reason)}</span></div></div>`;
     else if (v.verdict) verdictHtml = `<div class="verdict go"><span class="ico">✅</span><div><b>${when(v.at)} will run</b><span>${esc(v.verdict.reason)}</span></div></div>`;
     else verdictHtml = `<div class="verdict none"><span class="ico">❔</span><div><b>${when(v.at)}</b><span>${esc(v.note ?? "No forecast for that time yet. It will check again when it starts.")}</span></div></div>`;
   }
@@ -325,6 +346,8 @@ function renderWeather() {
       <div class="tile"><span>Chance of rain</span><b>${weather.rainChanceNext24hPct}%</b></div>
       <div class="tile"><span>Humidity</span><b>${c.humidityPct}%</b></div>
       <div class="tile"><span>Wind</span><b>${c.windKmh} km/h</b></div>
+      ${weather.etTodayMm !== undefined ? `<div class="tile" title="Water the garden loses today to heat, sun, wind and dry air"><span>Water use today</span><b>${weather.etTodayMm} mm</b></div>` : ""}
+      ${weather.soilMoisture !== undefined ? `<div class="tile" title="Modelled soil moisture, top 28 cm"><span>Soil moisture</span><b>${Math.round(weather.soilMoisture * 100)}%</b></div>` : ""}
     </div>
     ${verdictHtml}
     <h3>Next 7 days</h3>
@@ -355,11 +378,11 @@ function renderHistory() {
     list.append(li);
     return;
   }
-  const icons = { completed: "✅", stopped: "🛑", "skipped-rain": "🌧️", error: "⚠️" };
-  const titles = { completed: "Watered", stopped: "Stopped", "skipped-rain": "Skipped for rain", error: "Failed" };
+  const icons = { completed: "✅", stopped: "🛑", "skipped-rain": "🌧️", "skipped-weather": "🌡️", error: "⚠️" };
+  const titles = { completed: "Watered", stopped: "Stopped", "skipped-rain": "Skipped for rain", "skipped-weather": "Skipped for the weather", error: "Failed" };
   for (const h of status.history) {
     const li = document.createElement("li");
-    const detail = h.outcome === "skipped-rain" || h.outcome === "error" ? h.note : `${Math.round(h.wateredSeconds / 60)} min · ${h.trigger}`;
+    const detail = h.outcome === "skipped-rain" || h.outcome === "skipped-weather" || h.outcome === "error" ? h.note : `${Math.round(h.wateredSeconds / 60)} min · ${h.trigger}`;
     li.innerHTML = `<span class="ic"></span><div><div class="t"></div><div class="d"></div></div>`;
     li.querySelector(".ic").textContent = icons[h.outcome] ?? "•";
     li.querySelector(".t").textContent = `${titles[h.outcome] ?? h.outcome} · ${when(h.at)}`;
@@ -379,9 +402,22 @@ function renderSchedules() {
   schedules.forEach((s, i) => {
     const row = document.createElement("div");
     row.className = "sched";
+    const kind = document.createElement("select");
+    kind.setAttribute("aria-label", "Start at a time or before sunrise");
+    kind.className = "kind";
+    kind.append(new Option("At time", "clock"), new Option("Before sunrise", "dawn"));
+    kind.value = s.at ?? "clock";
+    kind.onchange = () => { s.at = kind.value; if (s.at === "dawn") s.beforeSunriseMin ??= 30; renderSchedules(); };
     const time = Object.assign(document.createElement("input"), { type: "time", value: s.time });
     time.setAttribute("aria-label", "Start time");
     time.onchange = () => (s.time = time.value);
+    const lead = document.createElement("div");
+    lead.className = "num lead";
+    const mins = Object.assign(document.createElement("input"), { type: "number", min: 0, max: 180, inputmode: "numeric", value: s.beforeSunriseMin ?? 30 });
+    mins.setAttribute("aria-label", "Minutes before sunrise");
+    mins.onchange = () => (s.beforeSunriseMin = Number(mins.value));
+    lead.append(mins, Object.assign(document.createElement("em"), { textContent: "min before" }));
+    const when = s.at === "dawn" ? lead : time;
     const chips = document.createElement("div");
     chips.className = "chips";
     DAYS.forEach((name, d) => {
@@ -395,7 +431,7 @@ function renderSchedules() {
     const del = Object.assign(document.createElement("button"), { type: "button", className: "x", textContent: "✕", title: "Remove" });
     del.setAttribute("aria-label", "Remove start time");
     del.onclick = () => { schedules.splice(i, 1); renderSchedules(); };
-    row.append(time, chips, del);
+    row.append(kind, when, chips, del);
     box.append(row);
   });
 }
@@ -409,6 +445,18 @@ function fillForm(c) {
   $("lookaheadHours").value = c.rain.lookaheadHours;
   $("probabilityPct").value = c.rain.probabilityPct;
   $("mm").value = c.rain.mm;
+  const sm = c.smart;
+  $("smartEnabled").checked = sm.enabled;
+  $("referenceEtMm").value = sm.referenceEtMm;
+  $("cropFactor").value = sm.cropFactor;
+  $("minPercent").value = sm.minPercent;
+  $("maxPercent").value = sm.maxPercent;
+  $("soilDryBelow").value = sm.soilDryBelow;
+  $("soilWetAbove").value = sm.soilWetAbove;
+  $("windEnabled").checked = sm.wind.enabled;
+  $("windMaxKmh").value = sm.wind.maxKmh;
+  $("frostEnabled").checked = sm.frost.enabled;
+  $("frostBelowC").value = sm.frost.belowC;
   schedules = structuredClone(c.schedules);
   renderSchedules();
 }
@@ -526,13 +574,18 @@ buildScene();
 
 $("start").onclick = () => act("/start", "Started");
 $("stop").onclick = () => act("/stop", "Stopped");
-$("add-schedule").onclick = () => { schedules.push({ days: [0, 1, 2, 3, 4, 5, 6], time: "06:00" }); renderSchedules(); };
+$("add-schedule").onclick = () => { schedules.push({ days: [0, 1, 2, 3, 4, 5, 6], at: "clock", time: "06:00" }); renderSchedules(); };
 $("config").onsubmit = async (e) => {
   e.preventDefault();
   const n = (id) => Number($(id).value);
   const config = {
     enabled: $("enabled").checked, onMinutes: n("onMinutes"), soakMinutes: n("soakMinutes"), cycles: n("cycles"), schedules,
     rain: { enabled: $("rainEnabled").checked, lookaheadHours: n("lookaheadHours"), probabilityPct: n("probabilityPct"), mm: n("mm") },
+    smart: {
+      enabled: $("smartEnabled").checked, referenceEtMm: n("referenceEtMm"), cropFactor: n("cropFactor"), minPercent: n("minPercent"), maxPercent: n("maxPercent"),
+      soilDryBelow: n("soilDryBelow"), soilWetAbove: n("soilWetAbove"),
+      wind: { enabled: $("windEnabled").checked, maxKmh: n("windMaxKmh") }, frost: { enabled: $("frostEnabled").checked, belowC: n("frostBelowC") },
+    },
   };
   try {
     fillForm(await api("/config", { method: "PUT", body: JSON.stringify(config) }));

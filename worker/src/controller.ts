@@ -3,17 +3,21 @@ import type { Env } from "./env";
 import { ping } from "./heartbeat";
 import type { Signal } from "./heartbeat";
 import { notify } from "./ntfy";
-import { advance, defaultConfig, dueSchedule, idleState, nextRunAt, startRun, wateredSoFar } from "./plan";
+import { advance, dueSchedule, defaultConfig, idleState, nextRunAt, normalizeConfig, startRun, wateredSoFar } from "./plan";
 import type { Config, RunState, Trigger } from "./plan";
-import { fetchForecast, rainVerdict } from "./rain";
+import { placeOf } from "./place";
+import { rainVerdict } from "./rain";
+import { inputsAt, smartPlan } from "./smart";
 import { TuyaAuthError } from "./tuya";
+import { getWeather } from "./weather";
+import type { WeatherBundle } from "./weather";
 import { Valve } from "./valve";
 import type { ValveStatus } from "./valve";
 
 export interface HistoryEntry {
   at: number;
   trigger: Trigger;
-  outcome: "completed" | "stopped" | "skipped-rain" | "error";
+  outcome: "completed" | "stopped" | "skipped-rain" | "skipped-weather" | "error";
   wateredSeconds: number;
   note: string;
 }
@@ -52,7 +56,8 @@ export class Controller extends DurableObject<Env> {
   }
 
   async getConfig(): Promise<Config> {
-    return (await this.ctx.storage.get<Config>("config")) ?? defaultConfig;
+    const saved = await this.ctx.storage.get<Config>("config");
+    return saved ? normalizeConfig(saved) : defaultConfig;
   }
 
   async setConfig(config: Config): Promise<Config> {
@@ -64,7 +69,7 @@ export class Controller extends DurableObject<Env> {
     const history = (await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [];
     const config = await this.getConfig();
     const now = Date.now();
-    return { state: await this.getState(), config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, this.env.TIMEZONE), history };
+    return { state: await this.getState(), config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, placeOf(this.env)), history };
   }
 
   getValve(): Promise<ValveStatus> {
@@ -111,12 +116,12 @@ export class Controller extends DurableObject<Env> {
         return;
       }
       const config = await this.getConfig();
-      const upcoming = dueSchedule(config, now + PREFLIGHT_LEAD_MS, this.env.TIMEZONE);
+      const upcoming = dueSchedule(config, now + PREFLIGHT_LEAD_MS, placeOf(this.env));
       if (upcoming && (await this.ctx.storage.get("lastPreflightKey")) !== upcoming) {
         await this.ctx.storage.put("lastPreflightKey", upcoming);
         await this.preflight(upcoming.slice(-5));
       }
-      const key = dueSchedule(config, now, this.env.TIMEZONE);
+      const key = dueSchedule(config, now, placeOf(this.env));
       if (!key || (await this.ctx.storage.get("lastScheduleKey")) === key) return;
       await this.ctx.storage.put("lastScheduleKey", key);
       await this.doStart("schedule");
@@ -175,24 +180,49 @@ export class Controller extends DurableObject<Env> {
     const config = await this.getConfig();
     const now = Date.now();
     let rainNote = "";
+    let cycles = config.cycles;
+    let scaling = "";
 
-    // Only scheduled runs respect the rain check; starting by hand or by voice is deliberate.
-    if (trigger === "schedule" && config.rain.enabled) {
+    // Only scheduled runs use the forecast; starting by hand or by voice is deliberate and runs exactly what you set.
+    if (trigger === "schedule") {
+      let weather: WeatherBundle | undefined;
+      let weatherProblem = "";
       try {
-        const verdict = rainVerdict(await fetchForecast(this.env.LATITUDE, this.env.LONGITUDE), config.rain, now);
-        if (verdict.skip) {
-          await this.record({ at: now, trigger, outcome: "skipped-rain", wateredSeconds: 0, note: verdict.reason });
-          await notify(this.env, { title: "Valve: skipped for rain", message: `Scheduled run skipped. ${verdict.reason}.`, tags: ["cloud_with_rain"] });
-          await this.heartbeat(trigger, "ok", `skipped for rain: ${verdict.reason}`);
-          return { ok: true, message: `skipped: ${verdict.reason}` };
-        }
-        rainNote = ` Forecast: ${verdict.reason}.`;
+        weather = await getWeather(this.env, now);
       } catch (e) {
-        rainNote = ` Rain check failed (${message(e)}), watering anyway.`;
+        weatherProblem = message(e);
+      }
+      if (!weather) {
+        rainNote = ` Weather check failed (${weatherProblem}), so your normal cycles apply.`;
+      } else {
+        if (config.rain.enabled) {
+          try {
+            const verdict = rainVerdict(weather.forecast, config.rain, now);
+            if (verdict.skip) {
+              await this.record({ at: now, trigger, outcome: "skipped-rain", wateredSeconds: 0, note: verdict.reason });
+              await notify(this.env, { title: "Valve: skipped for rain", message: `Scheduled run skipped. ${verdict.reason}.`, tags: ["cloud_with_rain"] });
+              await this.heartbeat(trigger, "ok", `skipped for rain: ${verdict.reason}`);
+              return { ok: true, message: `skipped: ${verdict.reason}` };
+            }
+            rainNote = ` Forecast: ${verdict.reason}.`;
+          } catch (e) {
+            rainNote = ` Rain check failed (${message(e)}), watering anyway.`;
+          }
+        }
+        const smart = smartPlan(config.smart, config.cycles, inputsAt(weather.forecast, now, this.env.TIMEZONE));
+        if (!smart.run) {
+          const why = smart.reasons.join(" ");
+          await this.record({ at: now, trigger, outcome: "skipped-weather", wateredSeconds: 0, note: why });
+          await notify(this.env, { title: "Valve: skipped for the weather", message: `Scheduled run skipped. ${why}`, tags: ["warning"] });
+          await this.heartbeat(trigger, "ok", `skipped for the weather: ${why}`);
+          return { ok: true, message: `skipped: ${why}` };
+        }
+        cycles = smart.cycles;
+        scaling = smart.reasons.length ? ` ${smart.reasons.join(" ")}` : "";
       }
     }
 
-    const run = startRun(config, trigger, now);
+    const run = startRun(config, trigger, now, cycles);
     try {
       await this.valve.open(run.onSeconds);
     } catch (e) {
@@ -206,7 +236,7 @@ export class Controller extends DurableObject<Env> {
     await this.ctx.storage.put("state", run);
     await this.ctx.storage.setAlarm(run.phaseEndsAt);
     const plan = `${run.cycles} x ${mins(run.onSeconds)} on, ${mins(run.soakSeconds)} soak between.`;
-    await notify(this.env, { title: "Valve: started", message: `${trigger} run. ${plan}${rainNote}`, tags: ["droplet"] });
+    await notify(this.env, { title: "Valve: started", message: `${trigger} run. ${plan}${rainNote}${scaling}`, tags: ["droplet"] });
     await this.heartbeat(trigger, "start", plan);
     return { ok: true, message: `started: ${plan}` };
   }

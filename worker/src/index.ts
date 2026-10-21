@@ -7,6 +7,8 @@ import { validateConfig } from "./plan";
 import { fetchForecast, rainVerdict } from "./rain";
 import type { RainVerdict } from "./rain";
 import { plannedRuns } from "./outlook";
+import type { PlannedRun } from "./outlook";
+import { placeOf } from "./place";
 import { getWeather } from "./weather";
 
 export { Controller };
@@ -37,7 +39,7 @@ api.get("/weather", async (c) => {
   const status = await controller(c.env).getStatus();
   try {
     const { data, forecast } = await getWeather(c.env);
-    let nextRun: { at: number; verdict: RainVerdict | null; note?: string } | null = null;
+    let nextRun: { at: number; verdict: RainVerdict | null; note?: string; planned?: PlannedRun } | null = null;
     if (status.nextRunAt) {
       nextRun = { at: status.nextRunAt, verdict: null };
       if (!status.config.rain.enabled) nextRun.verdict = { skip: false, reason: "rain check is off" };
@@ -50,7 +52,8 @@ api.get("/weather", async (c) => {
       }
     }
     const now = Date.now();
-    const daily = data.daily.map((d) => ({ ...d, runs: plannedRuns(status.config, d.date, forecast, status.history, now, c.env.TIMEZONE) }));
+    const daily = data.daily.map((d) => ({ ...d, runs: plannedRuns(status.config, d.date, forecast, status.history, now, placeOf(c.env)) }));
+    if (nextRun && status.nextRunAt) nextRun.planned = daily.flatMap((d) => d.runs).find((r) => r.at === status.nextRunAt);
     return c.json({ ...data, daily, nextRun });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "weather unavailable" }, 502);

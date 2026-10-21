@@ -4,7 +4,7 @@ import { describeWeather, summarizeWeather } from "../src/weather";
 
 describe("nextRunAt", () => {
   const cfg = { ...defaultConfig, schedules: [{ days: [3, 4], time: "06:00" }] }; // Wed and Thu
-  const tz = "Australia/Melbourne"; // UTC+11 in October
+  const tz = { timeZone: "Australia/Melbourne", latitude: -37.72, longitude: 145 }; // UTC+11 in October
   it("finds later today", () => {
     const now = Date.UTC(2026, 9, 20, 18, 0); // Wed 2026-10-21 05:00 local
     expect(nextRunAt(cfg, now, tz)).toBe(Date.UTC(2026, 9, 20, 19, 0));
@@ -64,5 +64,35 @@ describe("weather", () => {
     const mk = (precipitation: number) => ({ ...base, current: { time: "2026-10-21T00:00", temperature_2m: 1, apparent_temperature: 1, relative_humidity_2m: 1, precipitation, weather_code: 1, cloud_cover: 1, wind_speed_10m: 1, is_day: 1 } });
     expect(summarizeWeather(mk(0.5), 0).data.current.isRaining).toBe(true);
     expect(summarizeWeather(mk(0), 0).data.current.isRaining).toBe(false);
+  });
+});
+
+describe("weather data for the smart watering", () => {
+  const base = (hourly: object, daily: object) => ({
+    utc_offset_seconds: 39600,
+    current: { time: "2026-10-21T12:00", temperature_2m: 20, apparent_temperature: 20, relative_humidity_2m: 50, precipitation: 0, weather_code: 1, cloud_cover: 10, wind_speed_10m: 10, is_day: 1 },
+    hourly: { time: Array.from({ length: 48 }, (_, h) => new Date(Date.UTC(2026, 9, 20, 0, 0) + h * 3_600_000).toISOString().slice(0, 16)), precipitation: Array(48).fill(0), precipitation_probability: Array(48).fill(0), ...hourly },
+    daily: { time: ["2026-10-21", "2026-10-22"], weather_code: [1, 1], temperature_2m_max: [22, 23], temperature_2m_min: [11, 12], precipitation_sum: [0, 0], precipitation_probability_max: [0, 0], ...daily },
+  });
+
+  it("reads ET by local date and the modelled soil moisture", () => {
+    const raw = base(
+      { temperature_2m: Array(48).fill(18), wind_speed_10m: Array(48).fill(9), soil_moisture_0_to_7cm: Array(48).fill(0.2), soil_moisture_7_to_28cm: Array(48).fill(0.3) },
+      { et0_fao_evapotranspiration: [4.74, 6.02] },
+    );
+    const { data, forecast } = summarizeWeather(raw, Date.UTC(2026, 9, 21, 1, 0));
+    expect(data.etTodayMm).toBe(4.7);
+    expect(data.soilMoisture).toBe(0.25); // average of the two layers
+    expect(data.daily.map((d) => d.etMm)).toEqual([4.7, 6]);
+    expect(forecast.etByDate).toEqual({ "2026-10-21": 4.74, "2026-10-22": 6.02 });
+    expect(forecast.temperatureC).toHaveLength(48);
+    expect(forecast.windKmh?.[0]).toBe(9);
+  });
+
+  it("still works when the service sends none of the new fields", () => {
+    const { data, forecast } = summarizeWeather(base({}, {}), Date.UTC(2026, 9, 21, 1, 0));
+    expect(data.etTodayMm).toBeUndefined();
+    expect(data.soilMoisture).toBeUndefined();
+    expect(forecast.etByDate).toEqual({});
   });
 });

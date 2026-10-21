@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { advance, defaultConfig, dueSchedule, idleState, startRun, validateConfig, wateredSoFar } from "../src/plan";
+import { advance, defaultConfig, dueSchedule, idleState, nextRunAt, normalizeConfig, scheduledRunsOn, startRun, validateConfig, wateredSoFar } from "../src/plan";
+import { sunTimes } from "../src/sun";
 import { rainVerdict } from "../src/rain";
 import type { Forecast } from "../src/rain";
 import { signToken, verifyToken } from "../src/google";
 
 const MIN = 60_000;
+const place = { timeZone: "Australia/Melbourne", latitude: -37.72, longitude: 145 };
 const config = { ...defaultConfig, onMinutes: 10, soakMinutes: 5, cycles: 3 };
 
 describe("cycle and soak", () => {
@@ -54,12 +56,12 @@ describe("schedule", () => {
   it("fires at the local time on the right weekday", () => {
     // 2026-10-21 is a Wednesday; 06:00 in Melbourne (UTC+11 in October) is 19:00 UTC the day before
     const due = Date.UTC(2026, 9, 20, 19, 0);
-    expect(dueSchedule(cfg, due, "Australia/Melbourne")).toBe("2026-10-21 06:00");
-    expect(dueSchedule(cfg, due + MIN, "Australia/Melbourne")).toBeNull();
-    expect(dueSchedule(cfg, due + 24 * 60 * MIN, "Australia/Melbourne")).toBeNull(); // Thursday
+    expect(dueSchedule(cfg, due, place)).toBe("2026-10-21 06:00");
+    expect(dueSchedule(cfg, due + MIN, place)).toBeNull();
+    expect(dueSchedule(cfg, due + 24 * 60 * MIN, place)).toBeNull(); // Thursday
   });
   it("does nothing when disabled", () => {
-    expect(dueSchedule({ ...cfg, enabled: false }, Date.UTC(2026, 9, 20, 19, 0), "Australia/Melbourne")).toBeNull();
+    expect(dueSchedule({ ...cfg, enabled: false }, Date.UTC(2026, 9, 20, 19, 0), place)).toBeNull();
   });
 });
 
@@ -106,5 +108,78 @@ describe("healthchecks urls", () => {
     expect(pingUrl("https://hc-ping.com/abc", "ok")).toBe("https://hc-ping.com/abc");
     expect(pingUrl("https://hc-ping.com/abc/", "start")).toBe("https://hc-ping.com/abc/start");
     expect(pingUrl("https://hc-ping.com/abc", "fail")).toBe("https://hc-ping.com/abc/fail");
+  });
+});
+
+describe("dawn schedule", () => {
+  const dawn = { ...config, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn" as const, time: "00:00", beforeSunriseMin: 30 }] };
+  const sunrise = (date: string) => sunTimes(date, place.latitude, place.longitude)!.sunrise;
+  const dawnStart = (date: string) => Math.floor((sunrise(date) - 30 * MIN) / MIN) * MIN;
+
+  it("is due exactly the minute that is 30 minutes before sunrise", () => {
+    const at = dawnStart("2026-10-22");
+    expect(dueSchedule(dawn, at, place)).toMatch(/^2026-10-22 0[5-6]:\d\d$/);
+    expect(dueSchedule(dawn, at - MIN, place)).toBeNull();
+    expect(dueSchedule(dawn, at + MIN, place)).toBeNull();
+  });
+
+  it("moves with the seasons", () => {
+    const summer = scheduledRunsOn(dawn, "2026-12-21", place)[0];
+    const winter = scheduledRunsOn(dawn, "2026-06-21", place)[0];
+    const localHour = (t: number) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: place.timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t)).slice(0, 2));
+    expect(localHour(summer)).toBeLessThan(localHour(winter)); // earlier in summer
+  });
+
+  it("finds the next dawn start", () => {
+    const now = Date.UTC(2026, 9, 21, 12, 0); // midday on the 21st local
+    expect(nextRunAt(dawn, now, place)).toBe(dawnStart("2026-10-22"));
+  });
+
+  it("skips a day with no sunrise instead of failing", () => {
+    const polar = { timeZone: "Arctic/Longyearbyen", latitude: 78.2, longitude: 15.6 };
+    expect(scheduledRunsOn(dawn, "2026-12-21", polar)).toEqual([]);
+  });
+
+  it("still handles ordinary clock entries alongside", () => {
+    const both = { ...config, schedules: [{ days: [3], time: "06:00" }, { days: [3], at: "dawn" as const, time: "00:00", beforeSunriseMin: 0 }] };
+    expect(scheduledRunsOn(both, "2026-10-21", place)).toHaveLength(2);
+  });
+});
+
+describe("saved configs and the new settings", () => {
+  it("fills in the weather settings for a config saved before they existed", () => {
+    const old = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [1], time: "06:00" }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 } };
+    const c = normalizeConfig(old);
+    expect(c.smart).toEqual(defaultConfig.smart);
+    expect(c.schedules[0]).toMatchObject({ at: "clock", time: "06:00" });
+    expect(validateConfig(old).smart).toEqual(defaultConfig.smart);
+  });
+
+  it("keeps the settings you changed and fills only what is missing", () => {
+    const c = normalizeConfig({ ...defaultConfig, smart: { maxPercent: 120, wind: { maxKmh: 20 } } });
+    expect(c.smart.maxPercent).toBe(120);
+    expect(c.smart.wind).toEqual({ enabled: true, maxKmh: 20 });
+    expect(c.smart.referenceEtMm).toBe(defaultConfig.smart.referenceEtMm);
+  });
+
+  it("rejects nonsense in the weather settings and dawn entries", () => {
+    const bad = (smart: object) => () => validateConfig({ ...defaultConfig, smart: { ...defaultConfig.smart, ...smart } });
+    expect(bad({ referenceEtMm: 0 })).toThrow(/referenceEtMm/);
+    expect(bad({ cropFactor: 5 })).toThrow(/cropFactor/);
+    expect(bad({ maxPercent: 10 })).toThrow(/maxPercent/);
+    expect(bad({ soilDryBelow: 0.4, soilWetAbove: 0.3 })).toThrow(/soilWetAbove/);
+    expect(bad({ minPercent: 80, maxPercent: 60 })).toThrow();
+    expect(() => validateConfig({ ...defaultConfig, schedules: [{ days: [1], at: "dawn", time: "00:00", beforeSunriseMin: 500 }] })).toThrow(/beforeSunriseMin/);
+    expect(() => validateConfig({ ...defaultConfig, schedules: [{ days: [1], at: "noon", time: "12:00" }] })).toThrow(/schedule type/);
+  });
+
+  it("keeps a valid dawn entry without a clock time", () => {
+    const c = validateConfig({ ...defaultConfig, schedules: [{ days: [2, 1, 1], at: "dawn", time: "ignored", beforeSunriseMin: 20 }] });
+    expect(c.schedules[0]).toEqual({ days: [1, 2], at: "dawn", time: "00:00", beforeSunriseMin: 20 });
+  });
+
+  it("lets startRun override the number of cycles without touching the minutes", () => {
+    const run = startRun(defaultConfig, "schedule", 0, 5);
+    expect(run).toMatchObject({ cycles: 5, onSeconds: 600, soakSeconds: 300 });
   });
 });

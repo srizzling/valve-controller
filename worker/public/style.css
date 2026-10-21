@@ -355,3 +355,7 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
   .seep ellipse { opacity: .8; }
   .puddles ellipse { transform: scaleX(1); }
 }
+
+.sched .kind { font: inherit; color: var(--text); background: #0f1a2c; border: 1px solid #26385a; border-radius: 12px; padding: 10px 8px; }
+.sched .lead { width: 150px; }
+.sched .lead input { padding-left: 12px; }
