@@ -2,10 +2,38 @@
 
 # valve-controller
 
-Cycle-and-soak controller for a Tuya water valve, because the built-in one doesn't work.
+A cycle-and-soak controller with weather smarts for a Tuya (Smart Life) drip irrigation valve. It waters for N minutes,
+soaks for M, and repeats. It scales the number of cycles by how much water the garden is losing, and skips the run for
+rain, wet soil, wind or frost. Every run sends an ntfy notification. You can drive it from a web UI or from Google Home.
 
-Water for N minutes, soak for M, repeat. Scheduled runs are skipped when rain is forecast. Every run sends an ntfy
-notification. You can drive it from a web UI or from Google Home.
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" width="760" alt="The dashboard: an animated sunflower, the weather, a seven-day outlook showing how many cycles each day will run, and the settings">
+</p>
+
+## Why this exists
+
+I added schedules in the Smart Life app and they didn't run. I also wanted to decide how much to water from the
+evapotranspiration (ET) forecast, which the app can't do. I could have used Home Assistant. These days an AI can write
+whatever you need, so I had one build this instead.
+
+Yes, it is AI slop. I'm not asking anyone else to use it. It is public because there is no reason to hide it, and
+someone may find a piece of it useful (the Tuya cloud client in `worker/src/tuya.ts` is the part I'd look at first).
+Issues and pull requests are not expected and may go unanswered.
+
+## Screenshots
+
+These come from the UI's built-in demo mode (`?demo=watering`, `rain`, `night`), which uses made-up data and no backend.
+
+| Watering | Rain | Night |
+| --- | --- | --- |
+| <img src="docs/screenshots/watering.png" alt="Watering: the drip line runs and each emitter drips"> | <img src="docs/screenshots/rain.png" alt="Rain: a dark sky, falling rain and puddles"> | <img src="docs/screenshots/night.png" alt="Night: moon and stars"> |
+
+<details>
+<summary>Settings</summary>
+
+<img src="docs/screenshots/settings.png" width="760" alt="The cycle, schedule, rain delay and weather smarts settings">
+
+</details>
 
 ```
  browser / Google Home ──▶ Cloudflare Worker ──▶ Tuya cloud ──▶ the valve (battery, Wi-Fi)
