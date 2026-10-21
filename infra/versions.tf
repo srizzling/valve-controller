@@ -39,8 +39,8 @@ terraform {
 
 # Reads CLOUDFLARE_API_TOKEN from the environment.
 # Token permissions: Account > Workers Scripts:Edit, Cloudflare Tunnel:Edit, Access: Apps and Policies:Edit;
-# Zone > DNS:Edit, Workers Routes:Edit (on your zone). Creating the state bucket (make bootstrap) also needs
-# Account > Workers R2 Storage:Edit; Terraform itself reaches the bucket with the separate R2 keys.
+# Zone > DNS:Edit, Workers Routes:Edit (on your zone). The one-time setup script (make setup) uses a token with
+# Account > Account API Tokens:Edit and Workers R2 Storage:Edit; Terraform itself reaches the state bucket with the R2 keys it creates.
 provider "cloudflare" {}
 
 provider "healthchecksio" {

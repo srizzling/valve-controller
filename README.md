@@ -94,13 +94,12 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 
 ```sh
 cd infra
-cp terraform.tfvars.example terraform.tfvars        # fill in your account, zone, hostnames, email
-cp backend.hcl.example backend.hcl                  # put your Cloudflare account id in the endpoint
-export CLOUDFLARE_API_TOKEN=...                      # see versions.tf for the permissions it needs
+export CLOUDFLARE_API_TOKEN=...                      # for setup only: Account API Tokens:Edit + Workers R2 Storage:Edit
+make setup                                           # one time: state bucket, bucket-scoped R2 keys, backend.hcl, .env, terraform.tfvars
+$EDITOR terraform.tfvars                             # zone, hostnames, your email, timezone, coordinates
+export CLOUDFLARE_API_TOKEN=...                      # now a token for Terraform itself, see versions.tf for the permissions
 export TF_VAR_healthchecks_api_key=...
 export TF_VAR_tuya_local_key=...                     # only if docker_host is set
-make bootstrap                                       # one time: creates the private state bucket
-export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # the R2 token's keys, see "State" below
 make init && make apply                              # builds the Worker bundle, then applies
 ```
 
@@ -119,15 +118,21 @@ Still manual, because there is no API for them:
 Terraform state holds every secret (tunnel secret, agent token, signing key, the Tuya local key), so it is never
 committed. It lives in a private Cloudflare R2 bucket, `valve-controller-tfstate`, through Terraform's S3 backend.
 
-1. `make bootstrap` creates the bucket (once).
-2. In the dashboard go to R2 > Manage R2 API tokens > Create API token, give it **Object Read & Write** on that bucket
-   only, and export its two values as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Keep them in your password
-   manager, not in a file in the repo.
-3. `make init` reads the endpoint from `backend.hcl` (git-ignored, it only holds your account id).
+`make setup` does the one-time work (it is safe to run again):
 
-There is no state locking, so run one `apply` at a time. A new machine only needs those two keys, `backend.hcl` and
-`terraform.tfvars`. To move an existing local state into the bucket, run `terraform init -migrate-state
--backend-config=backend.hcl`.
+1. creates the bucket;
+2. creates R2 keys that can only read and write that bucket (the key id is the token id, the secret is the SHA-256 of the
+   token value, as R2 expects) and saves them to `infra/.env` (mode 600, git-ignored; `make` loads it);
+3. writes `backend.hcl` (git-ignored, it only holds your account id) and, if missing, `terraform.tfvars` with your
+   account id filled in.
+
+To replace the keys later (and revoke the old ones) run `node setup.mjs --rotate`. If creating keys is refused (the token
+lacks permission), the script says so, and you can create them in the dashboard instead (R2 > Manage R2 API tokens >
+Object Read & Write on that bucket) and put the two values in `infra/.env`.
+
+On a new machine, `make setup` finds the bucket, mints a second set of keys for that machine (the first machine keeps
+working) and rewrites `backend.hcl`. There is no state locking, so run one `apply` at a time. To move an existing local
+state into the bucket, run `terraform init -migrate-state -backend-config=backend.hcl`.
 
 Terraform is the source of truth for the Worker's variables and secrets. `worker/wrangler.jsonc` is only used for
 `wrangler dev` and for building the bundle, so do not `wrangler deploy` as well: it would replace what Terraform set.

@@ -1,18 +1,20 @@
 # Terraform needs the Worker bundle to exist before it plans.
 TF ?= terraform
 
-BUCKET ?= valve-controller-tfstate
-
-.PHONY: build bootstrap init plan apply fmt validate
+.PHONY: build setup init plan apply fmt validate
 
 build:
 	cd ../worker && npm ci && npx wrangler deploy --dry-run --outdir build
 
-# One time: create the private bucket that holds the state (needs CLOUDFLARE_API_TOKEN with R2 edit, or `wrangler login`).
-bootstrap:
-	cd ../worker && npx wrangler r2 bucket create $(BUCKET)
+# One time: creates the private state bucket, R2 keys limited to it, backend.hcl, .env and terraform.tfvars.
+# Needs CLOUDFLARE_API_TOKEN (see the top of setup.mjs). Safe to run again.
+setup:
+	node setup.mjs
 
-# Needs backend.hcl and AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY set to your R2 token's keys.
+# The R2 keys come from .env, written by `make setup`.
+-include .env
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+
 init:
 	$(TF) init -backend-config=backend.hcl
 
