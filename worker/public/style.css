@@ -254,9 +254,9 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .scene[data-valve="soaking"] .seep { opacity: 1; }
 .seep ellipse { animation: seep 4s ease-in infinite; fill: #7fe3ff; stroke: #e8fbff; stroke-width: .8; }
 
-/* camera: slide down to look at the soil while soaking */
-.cam { transform-origin: 200px 300px; transition: transform 1.6s cubic-bezier(.5, 0, .2, 1); }
-.scene[data-valve="soaking"] .cam { transform: translateY(-30px) scale(1.2); }
+/* camera: ease in towards the soil while soaking, pinned near the top so the sunflower head stays in view */
+.cam { transform-origin: 200px 40px; transition: transform 1.6s cubic-bezier(.5, 0, .2, 1); }
+.scene[data-valve="soaking"] .cam { transform: scale(1.1); }
 
 /* plant */
 .plant { transform-origin: 200px 270px; animation: sway 5.5s ease-in-out infinite alternate; }
