@@ -266,7 +266,8 @@ node scripts/github-setup.mjs secrets --dry-run   # shows the names it would set
 | variable | `TFVARS`, `CLOUDFLARE_ACCOUNT_ID` | `infra/terraform.tfvars` |
 
 Anyone who can change a workflow on a branch can read these secrets when it runs, so keep the repository private or
-single-owner. Branch protection is off, so a push to `main` deploys.
+single-owner. The repository is public, so workflows from outside contributors' pull requests wait for your approval and
+fork runs never receive secrets. Branch protection is off, so a push to `main` deploys.
 
 **Repository settings** are code too: `node scripts/github-setup.mjs settings` (safe to repeat) sets squash-only merges,
 deletes merged branches, turns Dependabot alerts on and makes workflow tokens read-only. Branch protection is

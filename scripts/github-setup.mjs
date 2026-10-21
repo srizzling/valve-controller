@@ -82,6 +82,9 @@ function settings() {
   console.log("\nGitHub Actions");
   api("PUT", `repos/${repo}/actions/permissions/workflow`, { default_workflow_permissions: "read", can_approve_pull_request_reviews: false }, "workflows get a read-only token by default");
 
+  // On a public repo, every workflow run from a first-time contributor's pull request waits for you to approve it.
+  api("PUT", `repos/${repo}/actions/permissions/fork-pr-contributor-approval`, { approval_policy: "all_external_contributors" }, "pull requests from outside contributors need approval before workflows run");
+
   if (!argv.includes("--protect")) return console.log(`\nBranch protection on ${BRANCH}: not requested (pass --protect to turn it on)`);
   console.log(`\nBranch protection on ${BRANCH}`);
   const r = api("PUT", `repos/${repo}/branches/${BRANCH}/protection`, {
