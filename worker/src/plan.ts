@@ -51,7 +51,10 @@ export const defaultConfig: Config = {
   onMinutes: 10,
   soakMinutes: 5,
   cycles: 3,
-  schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "clock", time: "06:00" }],
+  schedules: [
+    { days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 },
+    { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30 },
+  ],
   rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
   smart: {
     enabled: true,
