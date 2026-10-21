@@ -100,7 +100,7 @@ const cyclesLabel = (n) => `${n} cycle${n === 1 ? "" : "s"}`;
 
 function demoData(name) {
   const now = Date.now();
-  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30, onlyIfEtMm: 5.5 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
+  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "clock", time: "15:00", onlyIfEtMm: 5.5 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
     smart: { enabled: true, referenceEtMm: 4.5, cropFactor: 1, minPercent: 25, maxPercent: 150, soilDryBelow: 0.2, soilWetAbove: 0.35, wind: { enabled: true, maxKmh: 30 }, frost: { enabled: true, belowC: 2 } } };
   const idle = { phase: "idle", cycle: 0, cycles: 0, onSeconds: 0, soakSeconds: 0, phaseStartedAt: 0, phaseEndsAt: 0 };
   const running = (phase, left) => ({ phase, cycle: 2, cycles: 3, onSeconds: 600, soakSeconds: 300, phaseStartedAt: now - ((phase === "watering" ? 600 : 300) - left) * 1000, phaseEndsAt: now + left * 1000 });
@@ -115,7 +115,7 @@ function demoData(name) {
   const dry = "5% chance, 0.0 mm in the next 6h";
   const wet = "rain likely: 78% chance, 4.0 mm in the next 6h";
   const demoRuns = [
-    () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Hot, dry day (ET 5.9 mm, 131% of normal), soil dry (0.18). That is 131% of normal: 4 cycles instead of 3." }, { at: at(0) + 11 * 3600000, state: "will-run", reason: dry, cycles: 3, percent: 100, scaling: "Typical day (ET 4.5 mm, 100% of normal), soil dry (0.20). That is 100% of normal: 3 cycles, same as normal." }],
+    () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Hot, dry day (ET 5.9 mm, 131% of normal), soil dry (0.18). That is 131% of normal: 4 cycles instead of 3." }, { at: at(0) + 6 * 3600000, state: "will-run", reason: dry, cycles: 4, percent: 131, scaling: "Hot, dry day (ET 5.9 mm, 131% of normal), soil dry (0.18). That is 131% of normal: 4 cycles instead of 3." }, { at: at(0) + 11 * 3600000, state: "will-run", reason: dry, cycles: 3, percent: 100, scaling: "Typical day (ET 4.5 mm, 100% of normal), soil dry (0.20). That is 100% of normal: 3 cycles, same as normal." }],
     () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool or humid day (ET 2.8 mm, 62% of normal), soil damp (0.27). That is 62% of normal: 2 cycles instead of 3." }],
     () => run(2, "skip", wet),
     () => [],

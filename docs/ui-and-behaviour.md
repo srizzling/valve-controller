@@ -37,7 +37,8 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
   Sunrise and sunset are worked out from your latitude and longitude, so they follow the seasons. You can have as many
   start times as you like, for example one before sunrise and one before sunset. Each run is scaled by the weather on
   its own, so two runs on a hot day both get the extra cycles.
-- A start time can be an **extra run**: set "only if ET ≥ X mm" and it only happens on days the forecast ET reaches X.
+- A start time can be an **extra run**. It is on top of your normal starts, which still run every day. Set "only if ET ≥ X mm" and
+  it only happens on days the forecast ET reaches X, for example sunrise and sunset every day plus a mid-afternoon run on hot days.
   On a milder day it does nothing, leaves no history entry and sends no alert, and the 7-day outlook leaves it out. If
   there is no ET forecast for the day, it does not run. Leave the field empty for a run that happens every day.
 - Every change of the valve is confirmed by reading its state back. If Tuya can't be reached when a phase changes, it
