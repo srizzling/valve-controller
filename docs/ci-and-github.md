@@ -8,8 +8,10 @@
 | Scripts | the Python tests for `tuya-login.py`, and a syntax check of the Node scripts |
 | Terraform | `fmt`, `init -backend=false`, `validate` against the locked providers |
 | Architecture diagram is current | warns (does not block) when the diagram is behind the code |
-| `ci-ok` | one gate that fails if any of the above failed. Branch protection, if you turn it on, requires this check |
+| `ci-ok` | one gate that fails if any of the above failed. Branch protection requires this check |
 | Terraform plan / apply | `plan` on every run, `apply` only on `main`, one run at a time (the state has no locking) |
+
+`.github/workflows/release-please.yml` is separate: it keeps the release pull request up to date (see [Releases](#releases)).
 
 Every action is pinned to a commit. The plan and apply job needs the secrets and variables below and does nothing
 until they exist: it prints which ones are missing and exits cleanly.
@@ -26,12 +28,25 @@ node scripts/github-setup.mjs secrets --dry-run   # shows the names it would set
 
 Anyone who can change a workflow on a branch can read these secrets when it runs, so keep the repository single-owner.
 It is public, so workflows from outside contributors' pull requests wait for your approval and fork runs never receive
-secrets. Branch protection is off, so a push to `main` deploys.
+secrets. A push to `main` deploys, so `main` is protected (below).
 
-**Repository settings** are code too: `node scripts/github-setup.mjs settings` (safe to repeat) sets squash-only merges,
-deletes merged branches, turns Dependabot alerts on and makes workflow tokens read-only. Branch protection is
-optional and off by default: add `--protect` to require a pull request with a passing `ci-ok`, no force pushes, no
-deletion and linear history (it needs GitHub Pro on the repo owner's account, or a public repository).
+**Repository settings** are code too: `node scripts/github-setup.mjs settings` (safe to repeat; `--dry-run` shows what it
+would do). It sets:
+
+- squash-only merges, merged branches deleted, auto-merge allowed
+- `main` protected: a pull request with a passing `ci-ok`, a branch that is up to date, linear history, no force
+  push, no deletion, conversations resolved. Admins are not forced through this, so you can still push in an emergency
+  and GitHub records it. Set `enforce_admins` to `true` in the script to remove that escape hatch. `--no-protect` skips
+  all of it. It needs a public repository or GitHub Pro.
+- `v*` release tags that can be created but not moved or deleted
+- workflow tokens that are read-only and cannot approve pull requests, and outside contributors' runs that wait for your
+  approval
+- an allow-list of actions (GitHub's own, `hashicorp/setup-terraform`, `googleapis/release-please-action`), every one
+  pinned to a full commit SHA
+- Dependabot alerts, secret scanning with push protection, private vulnerability reporting (see `SECURITY.md`) and
+  CodeQL on the Worker, the scripts and the workflow files
+
+If you add an action, add it to `ALLOWED_ACTIONS` in the script and run it again, or the workflow will be refused.
 
 **Dependencies.** Dependabot alerts watch for known vulnerabilities. Renovate (`renovate.json`) opens the update PRs,
 including the security ones it reads from those alerts, so Dependabot's own security PRs are switched off to avoid
@@ -39,3 +54,42 @@ duplicates. It covers the Worker's npm packages, the scripts' Python packages, T
 Actions pins. Dev tooling patches and Actions pins merge themselves once CI is green; everything that changes runtime
 behaviour waits for you. Renovate runs as a GitHub App: install it once at <https://github.com/apps/renovate> and give it
 this repository.
+
+## Releases
+
+[Release Please](https://github.com/googleapis/release-please) turns the commit titles on `main` into versions. Squash
+merges use the pull request title as the commit title, so **write PR titles as conventional commits**:
+`feat(schedule): ...` is a minor version, `fix(ui): ...` a patch, and a `!` after the type (`feat(api)!: ...`) or a
+`BREAKING CHANGE:` footer is a breaking change. `docs`, `chore`, `ci` and `refactor` do not appear in the notes. While
+the version is below 1.0 a breaking change bumps the minor version.
+
+After each merge it opens or updates one pull request, "chore(main): release x.y.z", holding `CHANGELOG.md` and
+`version.txt`. Merging that pull request creates the `vx.y.z` tag and the GitHub release. It does not deploy anything:
+every merge to `main` is already deployed by the Terraform job, so a release is a labelled point in history. The first
+one is 0.1.0 and its notes cover the whole history. Settings are in `release-please-config.json`.
+
+**One-time setup.** A pull request opened by the built-in `GITHUB_TOKEN` does not start CI, so it could never pass the
+required `ci-ok` check. Release Please therefore uses a fine-grained personal access token:
+
+1. GitHub, Settings, Developer settings, Fine-grained tokens. Only this repository, permissions **Contents** and **Pull
+   requests**, both read and write. Pick the longest expiry you are comfortable with.
+2. `gh secret set RELEASE_PLEASE_TOKEN --repo srizzling/valve-controller`, paste the token.
+
+Until the secret exists the workflow prints a notice and does nothing. The token expires: when releases stop appearing,
+make a new one and set the secret again.
+
+## How the Worker is locked down
+
+- **Login.** Cloudflare Access sits in front of the UI and `/api`, and the Worker checks the Access token itself, so the
+  workers.dev address (switched off) would not bypass it either. Only `/oauth/*` and `/google/*` skip Access, because
+  Google's servers cannot log in. They are protected by the link password and signed tokens.
+- **Content Security Policy.** The UI may run only its own script and stylesheet, load nothing from other origins, never
+  be framed and never post forms. The same policy is in the `<meta>` tag of `worker/public/index.html` and in
+  `worker/assets-headers.txt`, which Terraform deploys as the static files' headers. Keep the two in step. The Worker's
+  own responses (`worker/src/security.ts`) get a stricter one, plus `nosniff`, no framing, no referrer, `no-store` and
+  HSTS. `worker/test/security.test.ts` fails if the UI gains inline script, an inline `style` attribute or an
+  external resource, which the policy would block.
+- **Cross-site requests.** Writes to `/api` must come from the app's own origin (`hono/csrf`).
+
+What a CSP cannot do here: the Access login page and its cookies belong to Cloudflare, and a stolen Access session still
+works until it expires (24 hours).

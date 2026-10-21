@@ -15,6 +15,11 @@ For `wrangler dev`, copy `worker/.dev.vars.example` to `worker/.dev.vars`; it se
 never be set in production. Minimum cycle and soak times of 0.1 minutes are allowed so a whole run can be tried in under
 a minute against a fake Tuya server.
 
+## Commits and releases
+
+Releases are cut by Release Please from conventional commit titles, so name pull requests `type(scope): subject`
+(`feat`, `fix`, `perf` appear in the changelog). See [CI/CD and GitHub](ci-and-github.md#releases).
+
 ## Architecture diagram
 
 The picture in the README is a snapshot. [`architecture/architecture.html`](architecture/architecture.html) is the
