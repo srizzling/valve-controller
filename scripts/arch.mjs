@@ -4,6 +4,7 @@
 //   check           print whether the diagram is stale (exit 1 when it is)
 //   finalize        validate, deliver and browser-check the diagram with archify
 //   bump            pin the diagram to the current HEAD, then finalize (to re-verify every citation)
+//   image           refresh docs/architecture/architecture.png (the diagram as a picture for the README), macOS with Chrome
 //   hook-commit     Claude Code PostToolUse hook: after a git commit, tell the agent if the diagram is stale
 //   hook-stop       Claude Code Stop hook: once per stop, ask the agent to update a stale diagram
 //
@@ -20,6 +21,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CANDIDATE = "docs/architecture/architecture.json";
 const RECEIPTS = "docs/architecture/.receipts"; // machine-local, not committed
 const LAST = `${RECEIPTS}/last-finalize.json`;
+const IMAGE = "docs/architecture/architecture.png"; // what the README shows
+const IMAGE_HASH = "docs/architecture/architecture.png.sha256"; // of the diagram content, so the picture only changes when the diagram does
+const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const OUTPUT = "docs/architecture/architecture.html";
 const ARCHIFY = ".claude/skills/archify/bin/archify.mjs";
 
@@ -113,10 +117,38 @@ function finalize() {
     for (const dir of readdirSync(join(ROOT, RECEIPTS)).filter((n) => /^\d+$/.test(n)).sort().slice(0, -3)) rmSync(join(ROOT, RECEIPTS, dir), { recursive: true, force: true });
     if (out.gates) console.log(out.ok ? `archify: pass (${Object.entries(out.gates).map(([k, v]) => `${k}=${v}`).join(", ")})` : `archify: FAIL at ${out.failedStage}`);
     for (const d of out.diagnostics ?? []) console.log(`- ${d.code}: ${d.message}${d.subject?.path ? ` [${d.subject.path}]` : ""}${d.supportedFixes ? `\n    fix: ${d.supportedFixes.join("; ")}` : ""}`);
-    return out.ok ? 0 : 1;
+    return out.ok ? image() : 1;
   } finally {
     ev.cleanup();
   }
+}
+
+/** The picture is a screenshot of the diagram canvas. Skipped quietly without Chrome and sips (macOS). */
+function image(force = false) {
+  if (!existsSync(CHROME) || spawnSync("sips", ["--version"]).error) {
+    console.log("image: needs Google Chrome and sips (macOS); left as it is");
+    return 0;
+  }
+  const doc = JSON.parse(readFileSync(join(ROOT, CANDIDATE), "utf8"));
+  doc.meta.repository.revision = ""; // re-pinning alone does not change the picture
+  const hash = createHash("sha256").update(JSON.stringify(doc)).digest("hex");
+  const hashFile = join(ROOT, IMAGE_HASH);
+  if (!force && existsSync(join(ROOT, IMAGE)) && existsSync(hashFile) && readFileSync(hashFile, "utf8").trim() === hash) return 0;
+  const out = join(ROOT, IMAGE);
+  // 2x so it stays sharp; the canvas sits at (32, 92) and is 1436 x 496 at a 1500 px window
+  const shot = spawnSync(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=2", "--window-size=1500,700", "--virtual-time-budget=5000", `--screenshot=${out}`, `file://${join(ROOT, OUTPUT)}`], { encoding: "utf8" });
+  if (!existsSync(out)) {
+    console.error(`image: Chrome did not produce a screenshot\n${shot.stderr}`);
+    return 1;
+  }
+  const crop = spawnSync("sips", ["--cropOffset", "184", "64", "--cropToHeightWidth", "992", "2872", out], { encoding: "utf8" });
+  if (crop.status !== 0) {
+    console.error(`image: could not crop\n${crop.stderr}`);
+    return 1;
+  }
+  writeFileSync(hashFile, `${hash}\n`);
+  console.log(`image: wrote ${IMAGE}`);
+  return 0;
 }
 
 function bump() {
@@ -159,6 +191,8 @@ if (cmd === "check") {
   process.exit(finalize());
 } else if (cmd === "bump") {
   process.exit(bump());
+} else if (cmd === "image") {
+  process.exit(image(true));
 } else if (cmd === "hook-commit") {
   const input = await stdinJson();
   if (input.tool_name === "Bash" && COMMIT.test(input.tool_input?.command ?? "")) {
@@ -172,6 +206,6 @@ if (cmd === "check") {
     if (s.stale) console.log(JSON.stringify({ decision: "block", reason: instructions(s) }));
   }
 } else {
-  console.error("usage: arch.mjs check | finalize | bump | hook-commit | hook-stop");
+  console.error("usage: arch.mjs check | finalize | bump | image | hook-commit | hook-stop");
   process.exit(2);
 }
