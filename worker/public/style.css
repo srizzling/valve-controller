@@ -291,8 +291,8 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .a2 { animation-delay: -.6s; }
 .robot-eyes { transform-box: fill-box; transform-origin: center; animation: blink 4.6s infinite; }
 .arm-far { transform-origin: 30px -88px; animation: armfar 2.4s ease-in-out infinite alternate; }
-.robot-can { transform: translate(-66px, -84px) rotate(0deg) scale(.46) translate(-62px, 0px); transition: transform 1.1s cubic-bezier(.3, 1.4, .5, 1) .6s; }
-.scene[data-valve="watering"] .robot-can { transform: translate(-66px, -84px) rotate(-24deg) scale(.46) translate(-62px, 0px); }
+.robot-gun { transform-origin: -66px -84px; transition: transform 1.1s cubic-bezier(.3, 1.4, .5, 1) .6s; }
+.scene[data-valve="watering"] .robot-gun { transform: rotate(-16deg); }
 
 .pour { opacity: 0; transition: opacity .3s ease; }
 .scene[data-valve="watering"] .pour { opacity: 1; transition: opacity .5s ease 1.3s; }

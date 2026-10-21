@@ -26,7 +26,7 @@ These come from the UI's built-in demo mode (`?demo=watering`, `rain`, `night`),
 
 | Watering | Rain | Night |
 | --- | --- | --- |
-| <img src="docs/screenshots/watering.png" alt="Watering: the robot tips its watering can over the sunflower"> | <img src="docs/screenshots/rain.png" alt="Rain: a dark sky, falling rain and puddles"> | <img src="docs/screenshots/night.png" alt="Night: moon and stars"> |
+| <img src="docs/screenshots/watering.png" alt="Watering: the robot sprays the sunflower with a hose"> | <img src="docs/screenshots/rain.png" alt="Rain: a dark sky, falling rain and puddles"> | <img src="docs/screenshots/night.png" alt="Night: moon and stars"> |
 
 <details>
 <summary>Settings</summary>
@@ -107,7 +107,7 @@ The diagram is pinned to this repository on GitHub, so every source reference li
 An animated cartoon garden follows the controller, not the buttons you press:
 
 - **Idle**: a sunflower swaying under the real sky (sun, moon and stars, clouds, bee), and the next watering time.
-- **Watering**: a little robot gardener rolls in and tilts its watering can over the sunflower, but only once the
+- **Watering**: a little robot gardener rolls in with a hose and sprays the sunflower, but only once the
   controller has confirmed the valve open. Clicking "Water now" changes nothing on screen until the run state comes back.
 - **Soaking**: the robot leaves, the view eases in towards the soil, and droplets seep towards the roots while the moisture
   spreads in step with the soak countdown.
