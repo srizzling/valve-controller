@@ -6,9 +6,10 @@
     "output": "docs/architecture/architecture.html",
     "quality_profile": "showcase",
     "repository": {
-      "url": "ssh://git@localhost/value-controller.git",
-      "revision": "0bc4192a5b9c910c0805f6487603f8a824388d2c",
-      "link_mode": "local-only"
+      "url": "https://github.com/srizzling/valve-controller.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "6d2647fd2891fbe0250425a9ef4ca7badc06c165"
     }
   },
   "components": [
@@ -463,6 +464,7 @@
       "title": "Provisioning",
       "items": [
         "infra/ (Terraform) creates the Worker, cron, Access, tunnel, DNS and the check",
+        "Terraform state is kept in a private R2 bucket, never in git",
         "The homelab containers can also be deployed by Terraform over SSH"
       ]
     }

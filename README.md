@@ -45,9 +45,8 @@ node scripts/arch.mjs finalize   # regenerate after editing architecture.json
 Setup on a new machine: `npx skills add tt-a1i/archify --skill archify --agent claude-code --copy --yes`. The skill
 (17 MB) is not committed; `skills-lock.json` pins it. Without it the hooks do nothing.
 
-This repo has no git remote, and archify needs a repository address, so the diagram uses the placeholder
-`ssh://git@localhost/value-controller.git` and verifies against a throwaway clone. After you add a real `origin`, set
-`meta.repository.url` in `architecture.json` to it (and `link_mode` to `web` for GitHub) so source links become clickable.
+The diagram is pinned to this repository on GitHub, so every source reference links to the exact lines at that commit.
+`scripts/arch.mjs` verifies citations against a throwaway clone of the pinned revision, so it never touches your checkout.
 
 ## The UI
 
