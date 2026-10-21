@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "1e289c076f342db0f299b8aab507c4a0b96fe3cf"
+      "revision": "d99f42a6e94da70597c2ec8d16e276c4e9afa1f9"
     }
   },
   "components": [
@@ -52,7 +52,7 @@
         {
           "path": "worker/src/access.ts",
           "line": 48,
-          "end_line": 56,
+          "end_line": 59,
           "label": "checkAccess"
         }
       ],
@@ -74,14 +74,14 @@
       "sources": [
         {
           "path": "worker/src/index.ts",
-          "line": 18,
-          "end_line": 23,
+          "line": 17,
+          "end_line": 22,
           "label": "Access gate, routes"
         },
         {
           "path": "worker/src/index.ts",
-          "line": 79,
-          "end_line": 79,
+          "line": 78,
+          "end_line": 78,
           "label": "Google routes"
         }
       ]
@@ -102,23 +102,23 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 36,
-          "end_line": 36,
+          "line": 38,
+          "end_line": 38,
           "label": "state + alarms"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 119,
+          "line": 126,
           "end_line": 148,
           "label": "alarm: cycle/soak"
         }
       ]
     },
     {
-      "id": "tunnel",
+      "id": "tuya",
       "type": "cloud",
-      "label": "Cloudflare Tunnel",
-      "sublabel": "agent hostname",
+      "label": "Tuya cloud",
+      "sublabel": "Smart Life API",
       "pos": [
         982,
         170
@@ -129,82 +129,51 @@
       ],
       "sources": [
         {
-          "path": "infra/main.tf",
-          "line": 50,
-          "end_line": 62,
-          "label": "ingress to agent"
+          "path": "worker/src/tuya.ts",
+          "line": 143,
+          "end_line": 150,
+          "label": "signed client"
+        },
+        {
+          "path": "worker/src/tuya.ts",
+          "line": 166,
+          "end_line": 178,
+          "label": "token refresh"
+        },
+        {
+          "path": "worker/src/tuya.ts",
+          "line": 218,
+          "end_line": 220,
+          "label": "sendCommands"
         }
-      ]
+      ],
+      "tag": "borrowed login"
     },
     {
-      "id": "agent",
-      "type": "backend",
-      "label": "Valve agent",
-      "sublabel": "FastAPI, homelab",
+      "id": "valve",
+      "type": "external",
+      "label": "Garden valve",
+      "sublabel": "battery, Wi-Fi",
       "pos": [
         1222,
         170
       ],
       "size": [
-        130,
+        120,
         60
       ],
       "sources": [
         {
-          "path": "agent/app.py",
-          "line": 19,
-          "end_line": 52,
-          "label": "token-guarded API"
-        }
-      ]
-    },
-    {
-      "id": "valvectl",
-      "type": "backend",
-      "label": "Valve driver",
-      "sublabel": "auto-close timer",
-      "pos": [
-        1222,
-        320
-      ],
-      "size": [
-        130,
-        60
-      ],
-      "sources": [
-        {
-          "path": "agent/valve.py",
-          "line": 39,
-          "end_line": 45,
-          "label": "open + arm timer"
+          "path": "worker/src/valve.ts",
+          "line": 65,
+          "end_line": 71,
+          "label": "open + countdown"
         },
         {
-          "path": "agent/valve.py",
-          "line": 83,
-          "end_line": 85,
-          "label": "timer closes valve"
-        }
-      ]
-    },
-    {
-      "id": "tuya",
-      "type": "external",
-      "label": "Tuya valve",
-      "sublabel": "LAN device",
-      "pos": [
-        1222,
-        470
-      ],
-      "size": [
-        130,
-        60
-      ],
-      "sources": [
-        {
-          "path": "agent/app.py",
-          "line": 58,
-          "end_line": 63,
-          "label": "tinytuya device"
+          "path": "worker/src/valve.ts",
+          "line": 78,
+          "end_line": 86,
+          "label": "confirm state"
         }
       ]
     },
@@ -230,8 +199,8 @@
         },
         {
           "path": "worker/src/index.ts",
-          "line": 83,
-          "end_line": 85,
+          "line": 82,
+          "end_line": 84,
           "label": "scheduled -> tick"
         }
       ]
@@ -333,17 +302,7 @@
         "access",
         "worker",
         "controller",
-        "tunnel",
         "cron"
-      ],
-      "pad": 20
-    },
-    {
-      "kind": "region",
-      "label": "Homelab (LAN)",
-      "wraps": [
-        "agent",
-        "valvectl"
       ],
       "pad": 20
     }
@@ -384,30 +343,17 @@
       "label": "RPC"
     },
     {
-      "id": "controller-to-tunnel",
+      "id": "controller-to-tuya",
       "from": "controller",
-      "to": "tunnel",
-      "label": "HTTPS + token",
+      "to": "tuya",
+      "label": "commands",
       "variant": "emphasis"
     },
     {
-      "id": "tunnel-to-agent",
-      "from": "tunnel",
-      "to": "agent",
-      "label": "cloudflared",
-      "variant": "security"
-    },
-    {
-      "id": "agent-to-valve",
-      "from": "agent",
-      "to": "valvectl",
-      "label": "open(seconds)"
-    },
-    {
-      "id": "valve-to-tuya",
-      "from": "valvectl",
-      "to": "tuya",
-      "label": "tinytuya LAN",
+      "id": "tuya-to-valve",
+      "from": "tuya",
+      "to": "valve",
+      "label": "relays",
       "variant": "emphasis"
     },
     {
@@ -439,7 +385,7 @@
       "items": [
         "The UI and /api sit behind Cloudflare Access, and the Worker re-checks the token",
         "Google Home bypasses Access on /oauth and /google, using its own signed tokens",
-        "The agent is only reachable through the tunnel, with a bearer token"
+        "Only the Controller talks to Tuya, using a login it keeps in its own storage"
       ]
     },
     {
@@ -447,25 +393,25 @@
       "title": "One brain, one failsafe",
       "items": [
         "The Controller keeps run state and uses alarms for the 10-minute and 5-minute phases",
-        "Every open carries a duration, so the agent timer closes the valve if Cloudflare is lost"
+        "Every open sets the valve's own countdown a little longer than the run, so the valve closes itself if Cloudflare is lost",
+        "Each phase change reads the valve back, and stops the run if it was changed outside the controller"
       ]
     },
     {
       "dot": "rose",
-      "title": "Alerts come from three places",
+      "title": "Alerts come from two places",
       "items": [
-        "Controller sends ntfy on start, finish, skip and failure, plus a preflight 10 minutes before",
-        "healthchecks.io alerts when a scheduled run never reports in",
-        "The agent sends its own ntfy when its failsafe timer fires"
+        "Controller sends ntfy on start, finish, skip and failure, plus a check 10 minutes before each run (offline, low battery, expired Tuya login)",
+        "healthchecks.io alerts when a scheduled run never reports in"
       ]
     },
     {
       "dot": "amber",
       "title": "Provisioning",
       "items": [
-        "infra/ (Terraform) creates the Worker, cron, Access, the Zero Trust team address, tunnel, DNS and the check; GitHub Actions applies it on every merge to main",
+        "infra/ (Terraform) creates the Worker, cron, Access, the Zero Trust team address and the check; GitHub Actions applies it on every merge to main",
         "Terraform state is kept in a private R2 bucket, never in git",
-        "infra/homelab runs the agent and cloudflared; CI cannot reach the homelab, so it is applied by hand"
+        "Nothing runs at home: the valve only talks to Tuya's cloud"
       ]
     }
   ]
