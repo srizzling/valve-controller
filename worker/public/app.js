@@ -314,7 +314,7 @@ function renderWeather() {
     const label = i === 0 ? "Today" : new Intl.DateTimeFormat([], { weekday: "short", timeZone: "UTC" }).format(new Date(`${d.date}T12:00:00Z`));
     const water = waterBadge(d.runs);
     return `<button type="button" class="day ${water.cls}" data-i="${i}" aria-label="${esc(label)}: ${esc(water.text)}"><div class="d">${label}</div><div class="i" title="${d.condition.label}">${d.condition.icon}</div><div class="t">${d.tMaxC}° / ${d.tMinC}°</div>
-      <div class="bar" title="${mm(d.rainMm)}"><i style="height:${Math.min(100, (d.rainMm / maxMm) * 100)}%"></i></div><div class="mm">${d.rainMm >= 10 ? Math.round(d.rainMm) : d.rainMm}</div><div class="p">${d.chancePct}%</div>
+      <div class="bar" title="${mm(d.rainMm)}"><i data-h="${Math.min(100, (d.rainMm / maxMm) * 100)}"></i></div><div class="mm">${d.rainMm >= 10 ? Math.round(d.rainMm) : d.rainMm}</div><div class="p">${d.chancePct}%</div>
       <div class="water"><span class="wi">${water.icon}</span><span class="wl">${water.short}</span></div></button>`;
   }).join("");
   box.innerHTML = `
@@ -334,6 +334,8 @@ function renderWeather() {
     <div class="week">${week}</div>
     <div class="legend"><span><i class="lg waters"></i>waters</span><span><i class="lg skips"></i>skipped for rain</span><span><i class="lg none"></i>no run</span></div>
     <div id="day-detail" class="day-detail" aria-live="polite">Tap a day to see its runs.</div>`;
+  // Set here rather than in the markup: the page's CSP does not allow inline style attributes.
+  box.querySelectorAll(".bar i[data-h]").forEach((i) => { i.style.height = `${i.dataset.h}%`; });
   box.querySelectorAll(".day").forEach((btn) => {
     btn.onclick = () => {
       selectedDay = Number(btn.dataset.i);

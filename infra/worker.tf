@@ -51,11 +51,20 @@ resource "cloudflare_worker_version" "valve" {
   compatibility_date = var.compatibility_date
   main_module        = "index.js"
 
-  modules = [{
-    name         = "index.js"
-    content_type = "application/javascript+module"
-    content_file = "${path.module}/../worker/build/index.js" # replaced (new version) whenever this changes
-  }]
+  modules = [
+    {
+      name         = "index.js"
+      content_type = "application/javascript+module"
+      content_file = "${path.module}/../worker/build/index.js" # replaced (new version) whenever this changes
+    },
+    # Security headers (CSP and friends) for the static UI. Cloudflare reads a module named `_headers` as the
+    # Static Assets headers file. It sits outside worker/public so it is not also published as a downloadable asset.
+    {
+      name         = "_headers"
+      content_type = "text/plain"
+      content_file = "${path.module}/../worker/assets-headers.txt"
+    },
+  ]
 
   assets = {
     directory = "${path.module}/../worker/public"
