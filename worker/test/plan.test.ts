@@ -146,6 +146,39 @@ describe("dawn schedule", () => {
   });
 });
 
+describe("sunset schedule", () => {
+  const sunset = (date: string) => sunTimes(date, place.latitude, place.longitude)!.sunset;
+  const dusk = (min: number) => ({ ...config, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dusk" as const, time: "00:00", afterSunsetMin: min }] });
+
+  it("is due exactly the minute it is 45 minutes before sunset", () => {
+    const at = Math.floor((sunset("2026-10-22") - 45 * MIN) / MIN) * MIN;
+    expect(dueSchedule(dusk(-45), at, place)).toMatch(/^2026-10-22 1[78]:\d\d$/);
+    expect(dueSchedule(dusk(-45), at - MIN, place)).toBeNull();
+  });
+
+  it("can start after sunset", () => {
+    const [t] = scheduledRunsOn(dusk(20), "2026-10-22", place);
+    expect(t).toBe(Math.floor((sunset("2026-10-22") + 20 * MIN) / MIN) * MIN);
+  });
+
+  it("gives a sunrise and a sunset run on the same day, earliest first", () => {
+    const both = { ...config, schedules: [
+      { days: [3], at: "dusk" as const, time: "00:00", afterSunsetMin: -30 },
+      { days: [3], at: "dawn" as const, time: "00:00", beforeSunriseMin: 30 },
+    ] };
+    const [first, second] = scheduledRunsOn(both, "2026-10-21", place);
+    expect(first).toBeLessThan(second);
+    expect(second - first).toBeGreaterThan(10 * 3_600_000);
+    expect(nextRunAt(both, Date.UTC(2026, 9, 21, 0, 0), place)).toBe(second); // 11:00 local: the sunrise start has passed, the sunset one has not
+  });
+
+  it("validates the offset and keeps no clock time", () => {
+    expect(() => validateConfig({ ...defaultConfig, schedules: [{ days: [1], at: "dusk", time: "00:00", afterSunsetMin: 300 }] })).toThrow(/afterSunsetMin/);
+    const c = validateConfig({ ...defaultConfig, schedules: [{ days: [1], at: "dusk", time: "ignored", afterSunsetMin: -30 }] });
+    expect(c.schedules[0]).toEqual({ days: [1], at: "dusk", time: "00:00", afterSunsetMin: -30 });
+  });
+});
+
 describe("saved configs and the new settings", () => {
   it("fills in the weather settings for a config saved before they existed", () => {
     const old = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [1], time: "06:00" }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 } };

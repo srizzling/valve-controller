@@ -121,7 +121,7 @@ const minutesLabel = (m) => `${Math.round(m * 10) / 10} min`;
 
 function demoData(name) {
   const now = Date.now();
-  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
+  const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
     smart: { enabled: true, referenceEtMm: 4.5, cropFactor: 1, minPercent: 25, maxPercent: 150, soilDryBelow: 0.2, soilWetAbove: 0.35, wind: { enabled: true, maxKmh: 30 }, frost: { enabled: true, belowC: 2 } } };
   const idle = { phase: "idle", cycle: 0, cycles: 0, onSeconds: 0, soakSeconds: 0, phaseStartedAt: 0, phaseEndsAt: 0 };
   const running = (phase, left) => ({ phase, cycle: 2, cycles: 3, onSeconds: 600, soakSeconds: 300, phaseStartedAt: now - ((phase === "watering" ? 600 : 300) - left) * 1000, phaseEndsAt: now + left * 1000 });
@@ -136,8 +136,8 @@ function demoData(name) {
   const dry = "5% chance, 0.0 mm in the next 6h";
   const wet = "rain likely: 78% chance, 4.0 mm in the next 6h";
   const demoRuns = [
-    () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Warm and dry: 4 cycles instead of 3 (ET 5.9 mm, soil dry 0.18)." }],
-    () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool day: 2 cycles instead of 3 (ET 2.8 mm, soil damp 0.27)." }],
+    () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Warm and dry: 4 cycles instead of 3 (ET 5.9 mm, soil dry 0.18)." }, { at: at(0) + 11 * 3600000, state: "will-run", reason: dry, cycles: 3, percent: 100, scaling: "Typical (ET 4.5 mm), soil dry (0.20): 100% of normal, 3 of 3 cycles." }],
+    () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool day: 2 cycles instead of 3 (ET 2.8 mm, soil damp 0.27)." }, { at: at(1) + 11 * 3600000, state: "will-run", reason: dry, cycles: 1, percent: 33, scaling: "Cool day: 1 cycle instead of 3 (ET 2.8 mm, soil damp 0.27)." }],
     () => run(2, "skip", wet),
     () => [],
     () => [{ at: at(4), state: "skip-weather", reason: "Soil is wet (0.38 m³/m³), so no watering is needed. Weather: low (ET 1.9 mm)." }],
@@ -402,22 +402,31 @@ function renderSchedules() {
   schedules.forEach((s, i) => {
     const row = document.createElement("div");
     row.className = "sched";
+    // four ways to say when: a clock time, before sunrise, before sunset, after sunset
+    const kindOf = (e) => (e.at === "dawn" ? "dawn" : e.at === "dusk" ? ((e.afterSunsetMin ?? 0) < 0 ? "dusk-before" : "dusk-after") : "clock");
+    const minutesOf = (e) => (e.at === "dawn" ? e.beforeSunriseMin : Math.abs(e.afterSunsetMin ?? 30)) ?? 30;
+    const setSun = (e, kindName, min) => {
+      delete e.beforeSunriseMin; delete e.afterSunsetMin;
+      if (kindName === "clock") { e.at = "clock"; return; }
+      if (kindName === "dawn") { e.at = "dawn"; e.beforeSunriseMin = min; return; }
+      e.at = "dusk"; e.afterSunsetMin = kindName === "dusk-before" ? -min : min;
+    };
     const kind = document.createElement("select");
-    kind.setAttribute("aria-label", "Start at a time or before sunrise");
+    kind.setAttribute("aria-label", "When to start: a time, or relative to sunrise or sunset");
     kind.className = "kind";
-    kind.append(new Option("At time", "clock"), new Option("Before sunrise", "dawn"));
-    kind.value = s.at ?? "clock";
-    kind.onchange = () => { s.at = kind.value; if (s.at === "dawn") s.beforeSunriseMin ??= 30; renderSchedules(); };
+    kind.append(new Option("At time", "clock"), new Option("Before sunrise", "dawn"), new Option("Before sunset", "dusk-before"), new Option("After sunset", "dusk-after"));
+    kind.value = kindOf(s);
+    kind.onchange = () => { setSun(s, kind.value, minutesOf(s)); renderSchedules(); };
     const time = Object.assign(document.createElement("input"), { type: "time", value: s.time });
     time.setAttribute("aria-label", "Start time");
     time.onchange = () => (s.time = time.value);
     const lead = document.createElement("div");
     lead.className = "num lead";
-    const mins = Object.assign(document.createElement("input"), { type: "number", min: 0, max: 180, inputmode: "numeric", value: s.beforeSunriseMin ?? 30 });
-    mins.setAttribute("aria-label", "Minutes before sunrise");
-    mins.onchange = () => (s.beforeSunriseMin = Number(mins.value));
-    lead.append(mins, Object.assign(document.createElement("em"), { textContent: "min before" }));
-    const when = s.at === "dawn" ? lead : time;
+    const mins = Object.assign(document.createElement("input"), { type: "number", min: 0, max: 180, inputmode: "numeric", value: minutesOf(s) });
+    mins.setAttribute("aria-label", "Minutes from sunrise or sunset");
+    mins.onchange = () => setSun(s, kindOf(s), Number(mins.value));
+    lead.append(mins, Object.assign(document.createElement("em"), { textContent: kindOf(s) === "dusk-after" ? "min after" : "min before" }));
+    const when = s.at === "dawn" || s.at === "dusk" ? lead : time;
     const chips = document.createElement("div");
     chips.className = "chips";
     DAYS.forEach((name, d) => {

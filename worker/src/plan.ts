@@ -4,9 +4,10 @@ import { sunTimes } from "./sun";
 
 export interface ScheduleEntry {
   days: number[]; // 0 = Sunday ... 6 = Saturday
-  at?: "clock" | "dawn"; // missing means clock, so configs saved before dawn starts existed still work
-  time: string; // "HH:MM" in the configured timezone (ignored for dawn)
+  at?: "clock" | "dawn" | "dusk"; // missing means clock, so configs saved before sun-relative starts existed still work
+  time: string; // "HH:MM" in the configured timezone (ignored for dawn and dusk)
   beforeSunriseMin?: number; // for dawn: how long before sunrise to start
+  afterSunsetMin?: number; // for dusk: minutes after sunset to start, negative for before
 }
 
 export interface RainConfig {
@@ -120,9 +121,10 @@ export function validateConfig(input: unknown): Config {
   const schedules = c.schedules;
   if (!Array.isArray(schedules) || schedules.length > 20) throw new Error("schedules must be a list of up to 20 entries");
   for (const s of schedules) {
-    if (s.at !== "clock" && s.at !== "dawn") throw new Error(`bad schedule type: ${s.at}`);
+    if (s.at !== "clock" && s.at !== "dawn" && s.at !== "dusk") throw new Error(`bad schedule type: ${s.at}`);
     if (s.at === "clock" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.time)) throw new Error(`bad schedule time: ${s.time}`);
     if (s.at === "dawn") num(s.beforeSunriseMin, "schedule beforeSunriseMin", 0, 180);
+    if (s.at === "dusk") num(s.afterSunsetMin, "schedule afterSunsetMin", -180, 180);
     if (!Array.isArray(s.days) || s.days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
       throw new Error("schedule days must be integers 0-6");
     }
@@ -147,7 +149,7 @@ export function validateConfig(input: unknown): Config {
     onMinutes: num(c.onMinutes, "onMinutes", 0.1, 60),
     soakMinutes: num(c.soakMinutes, "soakMinutes", 0, 240),
     cycles: num(c.cycles, "cycles", 1, 20),
-    schedules: schedules.map((s) => ({ days: [...new Set(s.days)].sort(), at: s.at, time: s.at === "dawn" ? "00:00" : s.time, ...(s.at === "dawn" ? { beforeSunriseMin: s.beforeSunriseMin } : {}) })),
+    schedules: schedules.map((s) => ({ days: [...new Set(s.days)].sort(), at: s.at, time: s.at === "clock" ? s.time : "00:00", ...(s.at === "dawn" ? { beforeSunriseMin: s.beforeSunriseMin } : {}), ...(s.at === "dusk" ? { afterSunsetMin: s.afterSunsetMin } : {}) })),
     rain: {
       enabled: r.enabled !== false,
       probabilityPct: num(r.probabilityPct, "rain.probabilityPct", 0, 100),
@@ -229,13 +231,14 @@ export function localToUtc(y: number, m: number, d: number, hh: number, mm: numb
 
 /** When one schedule entry starts on a local calendar date, or null if it cannot (no sunrise that day). */
 export function entryStart(entry: ScheduleEntry, y: number, m: number, d: number, place: Place): number | null {
-  if (entry.at !== "dawn") {
+  if (entry.at !== "dawn" && entry.at !== "dusk") {
     const [hh, mm] = entry.time.split(":").map(Number);
     return localToUtc(y, m - 1, d, hh, mm, place.timeZone);
   }
   const sun = sunTimes(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`, place.latitude, place.longitude);
   if (!sun) return null;
-  return Math.floor((sun.sunrise - (entry.beforeSunriseMin ?? 0) * 60_000) / 60_000) * 60_000;
+  const t = entry.at === "dawn" ? sun.sunrise - (entry.beforeSunriseMin ?? 0) * 60_000 : sun.sunset + (entry.afterSunsetMin ?? 0) * 60_000;
+  return Math.floor(t / 60_000) * 60_000;
 }
 
 /** Returns a unique key like "2026-10-21 06:00" if a schedule entry is due this minute. */

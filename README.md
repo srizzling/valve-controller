@@ -135,8 +135,10 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
   probability threshold, or the forecast total reaches the mm threshold. If the forecast can't be fetched it waters
   anyway and says so in the notification. Starting from the UI or by voice always runs.
 - Weather smarts change the number of cycles for scheduled runs (see below).
-- A start time can be a clock time or "N minutes before sunrise" (worked out from your latitude and longitude, so it
-  follows the seasons).
+- A start time can be a clock time, "N minutes before sunrise", "N minutes before sunset" or "N minutes after sunset".
+  Sunrise and sunset are worked out from your latitude and longitude, so they follow the seasons. You can have as many
+  start times as you like, for example one before sunrise and one before sunset. Each run is scaled by the weather on
+  its own, so two runs on a hot day both get the extra cycles.
 - Every change of the valve is confirmed by reading its state back. If Tuya can't be reached when a phase changes, it
   retries twice (30s apart), then aborts the run, tries to close the valve and sends a high-priority ntfy.
 - Using the Smart Life app while a run is going is safe for the valve (its own countdown still applies), but the
