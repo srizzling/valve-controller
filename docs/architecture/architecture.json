@@ -1,0 +1,470 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Valve controller: runtime architecture",
+    "output": "docs/architecture/architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "ssh://git@localhost/value-controller.git",
+      "revision": "0bc4192a5b9c910c0805f6487603f8a824388d2c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "you",
+      "type": "external",
+      "label": "You",
+      "sublabel": "browser UI",
+      "pos": [
+        40,
+        170
+      ],
+      "size": [
+        120,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/public/app.js",
+          "line": 437,
+          "end_line": 447,
+          "label": "UI calls /api"
+        }
+      ]
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "Cloudflare Access",
+      "sublabel": "login + JWT",
+      "pos": [
+        262,
+        170
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/access.ts",
+          "line": 48,
+          "end_line": 56,
+          "label": "checkAccess"
+        }
+      ],
+      "tag": "2 layers"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "API + UI assets",
+      "pos": [
+        502,
+        170
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/index.ts",
+          "line": 18,
+          "end_line": 23,
+          "label": "Access gate, routes"
+        },
+        {
+          "path": "worker/src/index.ts",
+          "line": 79,
+          "end_line": 79,
+          "label": "Google routes"
+        }
+      ]
+    },
+    {
+      "id": "controller",
+      "type": "backend",
+      "label": "Controller",
+      "sublabel": "Durable Object",
+      "pos": [
+        742,
+        170
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/controller.ts",
+          "line": 36,
+          "end_line": 36,
+          "label": "state + alarms"
+        },
+        {
+          "path": "worker/src/controller.ts",
+          "line": 119,
+          "end_line": 148,
+          "label": "alarm: cycle/soak"
+        }
+      ]
+    },
+    {
+      "id": "tunnel",
+      "type": "cloud",
+      "label": "Cloudflare Tunnel",
+      "sublabel": "agent hostname",
+      "pos": [
+        982,
+        170
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "infra/main.tf",
+          "line": 50,
+          "end_line": 62,
+          "label": "ingress to agent"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "Valve agent",
+      "sublabel": "FastAPI, homelab",
+      "pos": [
+        1222,
+        170
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "agent/app.py",
+          "line": 19,
+          "end_line": 52,
+          "label": "token-guarded API"
+        }
+      ]
+    },
+    {
+      "id": "valvectl",
+      "type": "backend",
+      "label": "Valve driver",
+      "sublabel": "auto-close timer",
+      "pos": [
+        1222,
+        320
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "agent/valve.py",
+          "line": 39,
+          "end_line": 45,
+          "label": "open + arm timer"
+        },
+        {
+          "path": "agent/valve.py",
+          "line": 83,
+          "end_line": 85,
+          "label": "timer closes valve"
+        }
+      ]
+    },
+    {
+      "id": "tuya",
+      "type": "external",
+      "label": "Tuya valve",
+      "sublabel": "LAN device",
+      "pos": [
+        1222,
+        470
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "agent/app.py",
+          "line": 58,
+          "end_line": 63,
+          "label": "tinytuya device"
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "type": "cloud",
+      "label": "Cron trigger",
+      "sublabel": "every minute",
+      "pos": [
+        502,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/wrangler.jsonc",
+          "line": 14,
+          "end_line": 14,
+          "label": "* * * * *"
+        },
+        {
+          "path": "worker/src/index.ts",
+          "line": 83,
+          "end_line": 85,
+          "label": "scheduled -> tick"
+        }
+      ]
+    },
+    {
+      "id": "google",
+      "type": "external",
+      "label": "Google Home",
+      "sublabel": "voice commands",
+      "pos": [
+        502,
+        330
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/google.ts",
+          "line": 108,
+          "end_line": 108,
+          "label": "fulfillment"
+        }
+      ]
+    },
+    {
+      "id": "weather",
+      "type": "external",
+      "label": "Open-Meteo",
+      "sublabel": "forecast",
+      "pos": [
+        650,
+        330
+      ],
+      "size": [
+        120,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/rain.ts",
+          "line": 15,
+          "end_line": 15,
+          "label": "forecast API"
+        }
+      ]
+    },
+    {
+      "id": "ntfy",
+      "type": "external",
+      "label": "ntfy",
+      "sublabel": "run alerts",
+      "pos": [
+        790,
+        330
+      ],
+      "size": [
+        120,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/ntfy.ts",
+          "line": 11,
+          "end_line": 22,
+          "label": "notify"
+        }
+      ]
+    },
+    {
+      "id": "hc",
+      "type": "external",
+      "label": "healthchecks.io",
+      "sublabel": "missed-run alert",
+      "pos": [
+        930,
+        330
+      ],
+      "size": [
+        120,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/heartbeat.ts",
+          "line": 15,
+          "end_line": 23,
+          "label": "ping"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Cloudflare",
+      "wraps": [
+        "access",
+        "worker",
+        "controller",
+        "tunnel",
+        "cron"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "Homelab (LAN)",
+      "wraps": [
+        "agent",
+        "valvectl"
+      ],
+      "pad": 20
+    }
+  ],
+  "connections": [
+    {
+      "id": "you-to-access",
+      "from": "you",
+      "to": "access",
+      "label": "HTTPS login",
+      "variant": "emphasis"
+    },
+    {
+      "id": "access-to-worker",
+      "from": "access",
+      "to": "worker",
+      "label": "Access JWT",
+      "variant": "security"
+    },
+    {
+      "id": "cron-to-worker",
+      "from": "cron",
+      "to": "worker",
+      "label": "scheduled",
+      "variant": "dashed"
+    },
+    {
+      "id": "google-to-worker",
+      "from": "google",
+      "to": "worker",
+      "label": "OAuth + voice",
+      "variant": "security"
+    },
+    {
+      "id": "worker-to-controller",
+      "from": "worker",
+      "to": "controller",
+      "label": "RPC"
+    },
+    {
+      "id": "controller-to-tunnel",
+      "from": "controller",
+      "to": "tunnel",
+      "label": "HTTPS + token",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tunnel-to-agent",
+      "from": "tunnel",
+      "to": "agent",
+      "label": "cloudflared",
+      "variant": "security"
+    },
+    {
+      "id": "agent-to-valve",
+      "from": "agent",
+      "to": "valvectl",
+      "label": "open(seconds)"
+    },
+    {
+      "id": "valve-to-tuya",
+      "from": "valvectl",
+      "to": "tuya",
+      "label": "tinytuya LAN",
+      "variant": "emphasis"
+    },
+    {
+      "id": "controller-to-weather",
+      "from": "controller",
+      "to": "weather",
+      "label": "rain check",
+      "variant": "dashed"
+    },
+    {
+      "id": "controller-to-ntfy",
+      "from": "controller",
+      "to": "ntfy",
+      "label": "alerts",
+      "variant": "dashed"
+    },
+    {
+      "id": "controller-to-hc",
+      "from": "controller",
+      "to": "hc",
+      "label": "heartbeat",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Who can reach what",
+      "items": [
+        "The UI and /api sit behind Cloudflare Access, and the Worker re-checks the token",
+        "Google Home bypasses Access on /oauth and /google, using its own signed tokens",
+        "The agent is only reachable through the tunnel, with a bearer token"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "One brain, one failsafe",
+      "items": [
+        "The Controller keeps run state and uses alarms for the 10-minute and 5-minute phases",
+        "Every open carries a duration, so the agent timer closes the valve if Cloudflare is lost"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Alerts come from three places",
+      "items": [
+        "Controller sends ntfy on start, finish, skip and failure, plus a preflight 10 minutes before",
+        "healthchecks.io alerts when a scheduled run never reports in",
+        "The agent sends its own ntfy when its failsafe timer fires"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Provisioning",
+      "items": [
+        "infra/ (Terraform) creates the Worker, cron, Access, tunnel, DNS and the check",
+        "The homelab containers can also be deployed by Terraform over SSH"
+      ]
+    }
+  ]
+}
