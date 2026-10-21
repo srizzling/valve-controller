@@ -13,8 +13,10 @@
   // Check the schedule every minute; the Durable Object decides whether anything is due.
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
-    // Public hostname of the Cloudflare Tunnel that fronts the homelab agent
-    "AGENT_URL": "https://valve-agent.example.com",
+    // The valve's Tuya device id (scripts/tuya-login.py prints it) and its data point codes
+    "TUYA_DEVICE_ID": "",
+    "TUYA_SWITCH_CODE": "switch_1",
+    "TUYA_COUNTDOWN_CODE": "countdown_1",
     // Used for schedule times and the rain forecast. Change these to your garden.
     "TIMEZONE": "Australia/Melbourne",
     "LATITUDE": "-37.81",
@@ -27,6 +29,6 @@
     "ACCESS_TEAM_DOMAIN": "yourteam.cloudflareaccess.com",
     "ACCESS_AUD": ""
   }
-  // Secrets (wrangler secret put ...): LINK_PASSWORD, AGENT_TOKEN, SIGNING_KEY,
+  // Secrets (set by Terraform): TUYA_SESSION, LINK_PASSWORD, SIGNING_KEY,
   // and optionally HEALTHCHECK_URL, NTFY_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 }

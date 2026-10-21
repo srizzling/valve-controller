@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { checkAccess } from "./access";
-import { valveStatus } from "./agent";
 import { Controller } from "./controller";
 import type { Env } from "./env";
 import { googleRoutes } from "./google";
@@ -68,9 +67,9 @@ api.get("/rain", async (c) => {
 });
 api.get("/valve", async (c) => {
   try {
-    return c.json(await valveStatus(c.env));
+    return c.json(await controller(c.env).getValve());
   } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : "agent unreachable" }, 502);
+    return c.json({ error: e instanceof Error ? e.message : "valve unreachable" }, 502);
   }
 });
 

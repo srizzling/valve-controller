@@ -59,11 +59,11 @@
       "automerge": false
     },
     {
-      "description": "Agent Python dependencies, including tinytuya which talks to the real valve: review by hand",
+      "description": "Python packages for the helper scripts: review by hand",
       "matchManagers": [
         "pip_requirements"
       ],
-      "groupName": "agent python dependencies",
+      "groupName": "script python dependencies",
       "automerge": false
     },
     {
@@ -72,14 +72,6 @@
         "terraform"
       ],
       "groupName": "terraform providers",
-      "automerge": false
-    },
-    {
-      "description": "Docker base images for the agent and cloudflared",
-      "matchManagers": [
-        "dockerfile",
-        "docker-compose"
-      ],
       "automerge": false
     },
     {

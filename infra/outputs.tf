@@ -13,18 +13,6 @@ output "link_password" {
   sensitive   = true
 }
 
-output "agent_token" {
-  description = "Only needed if you run the agent yourself instead of from homelab/."
-  value       = random_password.agent_token.result
-  sensitive   = true
-}
-
-output "tunnel_token" {
-  description = "Only needed if you run cloudflared yourself instead of from homelab/."
-  value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.agent.token
-  sensitive   = true
-}
-
 output "google_home" {
   description = "What to enter in the Google Home developer console (cloud-to-cloud integration)."
   value = {

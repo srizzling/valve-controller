@@ -1,6 +1,6 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# value-controller
+# valve-controller
 
 Cycle-and-soak controller for a Tuya water valve, because the built-in one doesn't work.
 
@@ -8,19 +8,49 @@ Water for N minutes, soak for M, repeat. Scheduled runs are skipped when rain is
 notification. You can drive it from a web UI or from Google Home.
 
 ```
- browser / Google Home ──▶ Cloudflare Worker ──▶ Cloudflare Tunnel ──▶ agent (homelab) ──LAN──▶ Tuya valve
-                           │  Durable Object: cycle/soak timers
+ browser / Google Home ──▶ Cloudflare Worker ──▶ Tuya cloud ──▶ the valve (battery, Wi-Fi)
+                           │  Durable Object: cycle/soak timers, the Tuya login
                            │  cron (every minute): schedule
                            ├─▶ Open-Meteo (rain forecast)
-                           └─▶ ntfy
+                           ├─▶ ntfy
+                           └─▶ healthchecks.io (missed-run alert)
 ```
 
-- `agent/` runs on the homelab next to the valve. It exposes three authenticated endpoints (`/status`,
-  `/valve/open`, `/valve/close`) and talks to the valve over the LAN with tinytuya. Every open carries a duration
-  and a local timer, so the valve closes by itself if the Worker or tunnel dies mid-run. It also closes the valve when
-  it starts.
-- `worker/` holds the UI, the schedule, the cycle/soak state machine (a Durable Object with alarms), the rain check,
-  ntfy, and Google Home.
+Everything runs on Cloudflare. Nothing runs at home: the valve is a battery device that only talks to Tuya's cloud, so
+that is the only way to reach it. `worker/` holds the UI, the schedule, the cycle/soak state machine (a Durable Object
+with alarms), the rain check, the valve client, ntfy, and Google Home.
+
+## The valve
+
+The Worker controls the valve the way the Smart Life app does. `worker/src/tuya.ts` is a port of Tuya's MIT-licensed
+`tuya-device-sharing-sdk` (the library behind Home Assistant's Tuya integration). It is tested against that library's own
+output, and against an independent mock of Tuya's server.
+
+- **Opening** sends the on/off command together with the valve's own **countdown** set to the run length plus 90 seconds,
+  then asks the valve to confirm it reports open. If the Worker or Cloudflare ever stops, the valve closes itself. That is
+  the failsafe. A valve with no countdown function runs without one (`tuya_countdown_code = ""`).
+- **The login** is created once by scanning a QR code (below) and is kept in the Worker's private storage. Tuya rotates
+  the refresh token each time it is used, so the Worker saves the new one every time and is the only thing that refreshes it.
+- **If the login stops working** (revoked in the app, or unused for too long), the check ten minutes before each scheduled
+  run sends a priority 5 ntfy saying so. Run `scripts/tuya-login.py` again and apply Terraform.
+
+This relies on an API Tuya does not document for third parties, and signs in with Home Assistant's registered client id
+because Tuya has not registered one for this project. It is stable while Home Assistant depends on it, but Tuya could
+change it. The alternative is a Tuya developer project (documented, but needs setup and periodic renewal).
+
+**Getting the login.** Open the Smart Life app and copy your **User Code** (Me > settings gear > Account and Security >
+User Code) into `infra/.env` as `TUYA_USER_CODE`. Then:
+
+```sh
+python3 -m venv scripts/.venv && scripts/.venv/bin/pip install -r scripts/requirements.txt   # once
+scripts/.venv/bin/python scripts/tuya-login.py
+```
+
+It shows a QR code to scan in the app (Me > the scan icon), finds the valve (category `sfkzq`, or `--device <id>`),
+prints what it can do, and saves the login to `infra/.env` and the valve's id and data point codes to
+`infra/terraform.tfvars`. The login is **not** signed out: the Worker uses it. It can control every Tuya device on your
+account until revoked (Smart Life app > Me > settings > Account and Security). It lives in `infra/.env` (mode 600),
+Terraform state and the Worker's storage.
 
 ## Architecture diagram
 
@@ -31,8 +61,8 @@ component cites the lines that back it, verified against a pinned commit.
 
 It is kept up to date with two Claude Code hooks (`.claude/settings.json`) that run `scripts/arch.mjs`:
 
-- **After a commit**, if a file that feeds the diagram (agent code, `worker/src`, `wrangler.jsonc`, `infra/*.tf`) changed
-  since the diagram was last verified, the agent is told to update it.
+- **After a commit**, if a file that feeds the diagram (`worker/src`, `wrangler.jsonc`, `infra/*.tf`) changed since the
+  diagram was last verified, the agent is told to update it.
 - **When the agent stops**, the same check runs once more as a safety net. It also flags a diagram whose JSON was edited
   without regenerating the HTML, or whose last regeneration failed.
 
@@ -53,15 +83,18 @@ The diagram is pinned to this repository on GitHub, so every source reference li
 An animated cartoon garden follows the controller, not the buttons you press:
 
 - **Idle**: a sunflower swaying under the real sky (sun, moon and stars, clouds, bee), and the next watering time.
-- **Watering**: a little robot gardener rolls in and tilts its watering can over the sunflower, but only once the controller has confirmed the valve open. Clicking
-  "Water now" changes nothing on screen until the run state comes back.
+- **Watering**: a little robot gardener rolls in and tilts its watering can over the sunflower, but only once the
+  controller has confirmed the valve open. Clicking "Water now" changes nothing on screen until the run state comes back.
 - **Soaking**: the robot leaves, the view slides down to the soil, and droplets seep towards the roots while the moisture
   spreads in step with the soak countdown.
 - **Rain**: rain falls only when it is raining now (from the current conditions), with puddles and a darker sky. A rain
   *forecast* on a sunny day only shows the "Rain delay active" notice and why.
 
 The weather card shows current conditions, rain now / last 24 h / next 24 h, chance of rain, humidity, wind, a 7-day
-rain outlook with a badge on each day showing whether it will water, skip for rain, or has no run (tap a day for the times and reasons), and whether the next scheduled run will go ahead. Future days use today's forecast and the same rain rule the controller applies when a run starts, so they can change as the forecast does. Animations respect `prefers-reduced-motion`.
+rain outlook with a badge on each day showing whether it will water, skip for rain, or has no run (tap a day for the
+times and reasons), and whether the next scheduled run will go ahead. Future days use today's forecast and the same rain
+rule the controller applies when a run starts, so they can change as the forecast does. Animations respect
+`prefers-reduced-motion`.
 
 To preview every scene without a backend, serve `worker/public` and open `/?demo=idle`, `watering`, `soaking`,
 `rain`, `delay` (sunny with a rain delay), `cloudy` or `night`.
@@ -74,28 +107,24 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 - Rain check applies to **scheduled** runs only: skip if any hour in the lookahead window is at or above the
   probability threshold, or the forecast total reaches the mm threshold. If the forecast can't be fetched it waters
   anyway and says so in the notification. Starting from the UI or by voice always runs.
-- If the agent can't be reached when a phase changes, it retries twice (30s apart), then aborts the run, tries to
-  close the valve and sends a high-priority ntfy.
+- Every change of the valve is confirmed by reading its state back. If Tuya can't be reached when a phase changes, it
+  retries twice (30s apart), then aborts the run, tries to close the valve and sends a high-priority ntfy.
+- Using the Smart Life app while a run is going is safe for the valve (its own countdown still applies), but the
+  controller will not notice. The next phase change reads the real state and reports a mismatch.
 
 ## Infrastructure as code (Terraform)
 
-There are two Terraform roots with separate state:
-
-- `infra/` is the cloud: everything on Cloudflare and healthchecks.io. **GitHub Actions applies it** on every merge to `main`.
-- `infra/homelab/` runs the agent and `cloudflared` on your Docker host over SSH. GitHub's runners cannot reach the
-  homelab, so you apply this one from your machine. Keeping it separate also stops a CI apply from trying to remove
-  the containers.
+`infra/` creates everything on Cloudflare and healthchecks.io. **GitHub Actions applies it** on every merge to `main`.
 
 | Managed by Terraform | Resource |
 | --- | --- |
 | Worker, assets, bindings, secrets, Durable Object | `cloudflare_worker`, `_worker_version`, `_workers_deployment` |
 | Schedule check every minute | `cloudflare_workers_cron_trigger` |
 | UI hostname, workers.dev switched off | `cloudflare_workers_custom_domain`, `_workers_script_subdomain` |
+| Zero Trust team address | `cloudflare_zero_trust_organization` |
 | Login in front of the UI, bypass for Google paths | `cloudflare_zero_trust_access_application` (two) |
-| Tunnel to the agent, its route and DNS | `cloudflare_zero_trust_tunnel_cloudflared`, `_config`, `cloudflare_dns_record` |
 | Missed-run alert | `healthchecksio_check` |
-| Every token, key and the ntfy topic name | `random_*`, read back with `terraform output` |
-| Agent and cloudflared containers (`infra/homelab/`) | `docker_container` over SSH |
+| Generated secrets and the ntfy topic name | `random_*`, read back with `terraform output` |
 
 All secrets live in one git-ignored file, `infra/.env` (see `infra/.env.example`). `make` loads it, and
 `node scripts/github-setup.mjs secrets` copies it into GitHub when you are ready.
@@ -107,20 +136,17 @@ cp .env.example .env                                 # delete the lines you do n
 make setup                                           # one time: state bucket, bucket-scoped R2 keys (added to .env), backend.hcl, terraform.tfvars
 make token                                           # creates the narrow token Terraform needs, saves it as CLOUDFLARE_API_TOKEN,
                                                      # keeps the broad one as CLOUDFLARE_SETUP_TOKEN
-$EDITOR terraform.tfvars                             # zone, hostnames, your email, timezone, coordinates
+$EDITOR terraform.tfvars                             # zone, hostname, your email, timezone, coordinates
 $EDITOR .env                                         # add TF_VAR_healthchecks_api_key
+# get the valve login (see "The valve" above)
 make init && make apply                              # builds the Worker bundle, then applies
-
-cd homelab                                           # the agent, from your machine
-cp terraform.tfvars.example terraform.tfvars         # docker host, Tuya device id and IP; TF_VAR_tuya_local_key goes in ../.env
-make init && make apply
 ```
 
-`make token` gives Terraform only what it manages: Workers Scripts, Cloudflare Tunnel and Access apps on the account, and
-Zone Read, DNS and Workers Routes on your zone. Run it again with `--rotate` (`node terraform-token.mjs --rotate`) after
-you add your domain and set `zone_name`, to narrow the zone permissions from "all zones in the account" to that one zone.
-The broad setup token can create other tokens, so delete it in the dashboard once you no longer need it (`make setup` and
-`make token` need it again for a rotation).
+`make token` gives Terraform only what it manages: Workers Scripts, Access apps and the Zero Trust organisation on the
+account, and Zone Read, DNS and Workers Routes on your zone. Run it again with `--rotate`
+(`node terraform-token.mjs --rotate`) after you add your domain and set `zone_name`, to narrow the zone permissions from
+"all zones in the account" to that one zone. The broad setup token can create other tokens, so delete it in the
+dashboard once you no longer need it (`make setup` and `make token` need it again for a rotation).
 
 `make` uses `terraform` and the committed lock files are for it. OpenTofu works too (`make apply TF=tofu`) but rewrites
 the lock files.
@@ -132,20 +158,14 @@ Still manual, because there is no API for them:
   set `zero_trust_team` in `terraform.tfvars` to the team name you chose, then
   `terraform import cloudflare_zero_trust_organization.this <account_id>` (in `infra/`, with `.env` loaded).
 - Creating the healthchecks.io account and its ntfy or email integration.
-- Getting the Tuya local key, which only Tuya's cloud holds. No developer project is needed: open the Smart Life app,
-  copy your **User Code** (Me > settings gear > Account and Security > User Code) into `infra/.env` as `TUYA_USER_CODE`,
-  then run `scripts/.venv/bin/python scripts/tuya-local-key.py` (first
-  `python3 -m venv scripts/.venv && scripts/.venv/bin/pip install -r scripts/requirements.txt`). It finds the valve on the
-  LAN, shows a QR code for you to scan in the app, saves the local key, device id and IP where Terraform reads them, and
-  signs out again. It signs in the way Home Assistant's Tuya integration does, with Home Assistant's registered client id,
-  because Tuya has not registered one for this project, so it is only used for that one lookup.
+- The Tuya login (scanning the QR code with your phone).
 - The Google Home developer console project. `terraform output google_home` prints every value to paste into it.
 - Subscribing to the ntfy topic (`terraform output ntfy_topic`).
 
 ### State
 
-Terraform state holds every secret (tunnel secret, agent token, signing key, the Tuya local key), so it is never
-committed. It lives in a private Cloudflare R2 bucket, `valve-controller-tfstate`, through Terraform's S3 backend.
+Terraform state holds every secret (the Tuya login, signing key, passwords), so it is never committed. It lives in a
+private Cloudflare R2 bucket, `valve-controller-tfstate`, through Terraform's S3 backend.
 
 `make setup` does the one-time work (it is safe to run again):
 
@@ -160,11 +180,13 @@ lacks permission), the script says so, and you can create them in the dashboard 
 Object Read & Write on that bucket) and put the two values in `infra/.env`.
 
 On a new machine, `make setup` finds the bucket, mints a second set of keys for that machine (the first machine keeps
-working) and rewrites `backend.hcl`. There is no state locking, so run one `apply` at a time. To move an existing local
-state into the bucket, run `terraform init -migrate-state -backend-config=backend.hcl`.
+working) and rewrites `backend.hcl`. There is no state locking, so run one `apply` at a time.
 
 Terraform is the source of truth for the Worker's variables and secrets. `worker/wrangler.jsonc` is only used for
-`wrangler dev` and for building the bundle, so do not `wrangler deploy` as well: it would replace what Terraform set.
+`wrangler dev` and for building the bundle, so do not `wrangler deploy`: it would replace what Terraform set.
+
+The Tuya login in state is only the seed. The Worker keeps the live, rotating copy in its own storage and ignores the
+seed unless you log in again (a later login replaces it), so applying Terraform never resets a working login.
 
 ## CI/CD and GitHub
 
@@ -173,8 +195,8 @@ Terraform is the source of truth for the Worker's variables and secrets. `worker
 | Job | What it does |
 | --- | --- |
 | Worker | typecheck, tests, and the same bundle build Terraform deploys |
-| Agent | the Python tests |
-| Terraform (two roots) | `fmt`, `init -backend=false`, `validate` against the locked providers |
+| Scripts | the Python tests for `tuya-login.py`, and a syntax check of the Node scripts |
+| Terraform | `fmt`, `init -backend=false`, `validate` against the locked providers |
 | Architecture diagram is current | warns (does not block) when the diagram is behind the code |
 | `ci-ok` | one gate that fails if any of the above failed. Branch protection requires this check |
 | Terraform plan / apply | `plan` on every run, `apply` only on `main`, one run at a time (the state has no locking) |
@@ -189,7 +211,7 @@ node scripts/github-setup.mjs secrets --dry-run   # shows the names it would set
 
 | Where | Name | Comes from |
 | --- | --- | --- |
-| secret | `CLOUDFLARE_API_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TF_VAR_healthchecks_api_key`, `TF_VAR_ntfy_token` | `infra/.env` |
+| secret | `CLOUDFLARE_API_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TF_VAR_healthchecks_api_key`, `TF_VAR_tuya_session`, `TF_VAR_ntfy_token` | `infra/.env` |
 | variable | `TFVARS`, `CLOUDFLARE_ACCOUNT_ID` | `infra/terraform.tfvars` |
 
 Anyone who can change a workflow on a branch can read these secrets when it runs, so keep the repository private or
@@ -202,113 +224,51 @@ set `enforce_admins` to `true` in the script to remove that. Branch protection n
 
 **Dependencies.** Dependabot alerts watch for known vulnerabilities. Renovate (`renovate.json`) opens the update PRs,
 including the security ones it reads from those alerts, so Dependabot's own security PRs are switched off to avoid
-duplicates. It covers the Worker's npm packages, the agent's Python packages, Terraform providers and lock files, the
-Docker images and the Actions pins. Dev tooling patches and Actions pins merge themselves once CI is green; everything
-that changes runtime behaviour waits for you. Renovate runs as a GitHub App: install it once at
-<https://github.com/apps/renovate> and give it this repository.
+duplicates. It covers the Worker's npm packages, the scripts' Python packages, Terraform providers and lock files and the
+Actions pins. Dev tooling patches and Actions pins merge themselves once CI is green; everything that changes runtime
+behaviour waits for you. Renovate runs as a GitHub App: install it once at <https://github.com/apps/renovate> and give it
+this repository.
 
-## Setup by hand
-
-The steps below do the same things without Terraform.
-
-### 1. Agent (homelab)
-
-```sh
-cd agent
-cp .env.example .env     # fill in the Tuya device id, local key, IP, AGENT_TOKEN, TUNNEL_TOKEN
-docker compose up -d
-```
-
-Get the device id and local key with `python -m tinytuya wizard` (needs a Tuya IoT platform project linked to your
-app). Give the valve a fixed IP/DHCP reservation. Try `TUYA_VERSION` 3.3, 3.4 or 3.5 if it doesn't answer, and
-check the switch data point (`TUYA_DP`, usually 1).
-
-In Cloudflare Zero Trust, create a tunnel and point a public hostname (e.g. `valve-agent.example.com`) at
-`http://agent:8080`.
-
-### 2. Worker
-
-```sh
-cd worker
-npm install
-# edit wrangler.jsonc vars: AGENT_URL, TIMEZONE, LATITUDE, LONGITUDE, NTFY_TOPIC,
-# and the two ACCESS_* values from step 3
-npx wrangler secret put AGENT_TOKEN     # same value as the agent's AGENT_TOKEN
-npx wrangler secret put SIGNING_KEY     # openssl rand -hex 32
-npx wrangler secret put LINK_PASSWORD   # only used when linking Google Home
-npx wrangler deploy
-```
-
-### 3. Lock it down with Cloudflare Access
-
-The UI is reachable from anywhere, so it sits behind Cloudflare Access (login with your Google account or an emailed
-code). The Worker also checks the Access token itself on every `/api/*` call, so a request that skips Access, for
-example one sent straight to the `workers.dev` hostname, gets a 401/403. If the two `ACCESS_*` values are not set, `/api/*`
-refuses everything (503) rather than leaving the valve open to the world.
-
-1. Give the Worker a hostname you can protect: either a custom domain (Worker > Settings > Domains & Routes) or just
-   the `workers.dev` one. In the same place, turn on **Cloudflare Access** for the Worker; that covers `workers.dev`
-   and preview URLs too.
-2. Zero Trust > Access > Applications > Add > Self-hosted, for the Worker hostname. Add an **Allow** policy for your
-   own email (or Google identity).
-3. Copy the application's **Audience (AUD) tag** into `ACCESS_AUD`, and your team domain
-   (`<team>.cloudflareaccess.com`) into `ACCESS_TEAM_DOMAIN`, both in `wrangler.jsonc`. Redeploy.
-4. Only if you use Google Home: add a second self-hosted application for the paths `/oauth/*` and `/google/*` on the
-   same hostname with a **Bypass** policy. Google's servers can't log in through Access. Those routes have their own
-   auth: the link password for account linking, and signed tokens for fulfillment.
-
-If the session expires while the page is open, requests fail and the page asks you to reload and sign in again.
-
-### 4. Google Home (optional)
+## Google Home (optional)
 
 Smart Home Actions are free for personal use and don't need review while the project is in testing.
 
-1. In the [Google Home developer console](https://console.home.google.com/) create a project and a cloud-to-cloud integration.
-2. Account linking: client id and secret of your choosing, authorization URL `https://<worker>/oauth/authorize`,
-   token URL `https://<worker>/oauth/token`.
-3. Fulfillment URL: `https://<worker>/google/fulfillment`.
-4. Set `GOOGLE_PROJECT_ID` in `wrangler.jsonc`, then
-   `wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and redeploy.
-5. In the Google Home app: add device, "Works with Google", pick your project, enter `LINK_PASSWORD` when asked.
+1. In the [Google Home developer console](https://console.home.google.com/) create a project and a cloud-to-cloud
+   integration. `terraform output google_home` prints the client id, secret and the three URLs to enter.
+2. Set `google_project_id` in `terraform.tfvars` and apply.
+3. In the Google Home app: add device, "Works with Google", pick your project, enter `link_password` when asked
+   (`terraform output -raw link_password`).
 
 The valve appears as a sprinkler called "Garden water": "turn on / off the garden water" or "start / stop".
 
-### Alerts
+## Alerts
 
-ntfy messages tell you what happened. These three catch what didn't:
+ntfy messages tell you what happened. These catch what didn't:
 
 | Alert | Where | Fires when |
 | --- | --- | --- |
 | Missed run | healthchecks.io | a scheduled run does not report in, so the schedule, Worker or Cloudflare is down |
-| Agent unreachable | ntfy, 10 min before each scheduled start | the agent or tunnel does not answer, so you find out before the garden is dry |
-| Open while idle | ntfy, same preflight | the valve is open with no run active |
-| Closed by agent timer | ntfy from the agent | the failsafe had to close the valve because the Worker never did |
-| Failed to close | ntfy from the agent, priority 5 | the failsafe tried and could not close the valve |
+| Cannot reach the valve | ntfy, 10 min before each scheduled start | Tuya's cloud did not answer |
+| Tuya login expired | ntfy, same check, priority 5 | the saved login no longer refreshes: run `scripts/tuya-login.py` |
+| Valve offline | ntfy, same check | Tuya reports the valve offline: check its Wi-Fi and batteries |
+| Low battery | ntfy, same check | the valve reports 20% or less |
+| Open while idle | ntfy, same check, priority 5 | the valve is open with no run active |
 
-Set up healthchecks.io:
+Only **scheduled** runs report to healthchecks.io: `/start` when a run begins, a success ping when it finishes or is
+skipped for rain (that is a run that did its job), and `/fail` when it errors. A run that starts and never finishes shows
+up as a missed run too. If you switch scheduled runs off in the UI or go away, pause the check in healthchecks.io.
 
-1. Create a check. Set the **period** to 1 day and the **grace time** to a couple of hours, and add your ntfy
-   integration (healthchecks.io can post to ntfy) or email.
-2. `npx wrangler secret put HEALTHCHECK_URL` with the check's ping URL (`https://hc-ping.com/<uuid>`).
-
-Only **scheduled** runs report: `/start` when a run begins, a success ping when it finishes or is skipped for rain
-(that is a run that did its job), and `/fail` when it errors. A run that starts and never finishes shows up as a
-missed run too. If you switch scheduled runs off in the UI or go away, pause the check in healthchecks.io.
-
-To get the agent's own alerts set `NTFY_TOPIC` (and `NTFY_URL`) in `agent/.env`. `MAX_ON_SECONDS` must stay above your
-longest watering period plus 90 seconds, or the agent's failsafe will cut a run short and alert.
-
-### Notifications
-
-Subscribe to your `NTFY_TOPIC` in the ntfy app. Pick a hard-to-guess topic on the public server, or set `NTFY_URL` to
-your own server (it must be reachable from Cloudflare) and add `NTFY_TOKEN`.
+Subscribe to `terraform output ntfy_topic` in the ntfy app. The topic name is generated and hard to guess, which is the
+only protection on the public ntfy server. Set `ntfy_url` to your own server (it must be reachable from Cloudflare) and
+add `ntfy_token` to lock it down.
 
 ## Development
 
 ```sh
-cd agent && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt && .venv/bin/python -m pytest
 cd worker && npm install && npm test && npm run typecheck
+python3 -m venv scripts/.venv && scripts/.venv/bin/pip install -r scripts/requirements.txt && scripts/.venv/bin/python -m unittest discover -s scripts/tests
 ```
 
-For `wrangler dev`, copy `worker/.dev.vars.example` to `worker/.dev.vars`; it sets `DEV_BYPASS_ACCESS=true`, which must never be set in production. Minimum cycle and soak times of 0.1 minutes
-are allowed so a whole run can be tried in under a minute against a fake agent.
+For `wrangler dev`, copy `worker/.dev.vars.example` to `worker/.dev.vars`; it sets `DEV_BYPASS_ACCESS=true`, which must
+never be set in production. Minimum cycle and soak times of 0.1 minutes are allowed so a whole run can be tried in under
+a minute against a fake Tuya server.

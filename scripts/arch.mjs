@@ -25,9 +25,6 @@ const ARCHIFY = ".claude/skills/archify/bin/archify.mjs";
 
 // Everything a runtime diagram depends on. Tests, docs and lockfiles are left out on purpose.
 const WATCHED = [
-  ":(glob)agent/*.py",
-  "agent/Dockerfile",
-  "agent/compose.yaml",
   "worker/src",
   "worker/wrangler.jsonc",
   "worker/public/index.html",

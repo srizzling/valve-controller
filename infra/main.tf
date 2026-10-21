@@ -5,11 +5,6 @@ data "cloudflare_zone" "this" {
 }
 
 # ───────────── Secrets and generated names ─────────────
-resource "random_password" "agent_token" {
-  length  = 48
-  special = false
-}
-
 resource "random_password" "signing_key" {
   length  = 64
   special = false
@@ -29,54 +24,9 @@ resource "random_id" "ntfy_topic" {
   byte_length = 8
 }
 
-resource "random_id" "tunnel_secret" {
-  byte_length = 35
-}
-
 locals {
   ntfy_topic       = var.ntfy_topic != "" ? var.ntfy_topic : "valve-${random_id.ntfy_topic.hex}"
   google_client_id = "valve-controller"
-  agent_url        = "https://${var.agent_hostname}"
-}
-
-# ───────────── Tunnel from Cloudflare to the homelab agent ─────────────
-resource "cloudflare_zero_trust_tunnel_cloudflared" "agent" {
-  account_id    = var.cloudflare_account_id
-  name          = "valve-agent"
-  config_src    = "cloudflare"
-  tunnel_secret = random_id.tunnel_secret.b64_std
-}
-
-resource "cloudflare_zero_trust_tunnel_cloudflared_config" "agent" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.agent.id
-
-  config = {
-    ingress = [
-      {
-        hostname = var.agent_hostname
-        service  = "http://agent:8080" # the agent container's name on the docker network
-      },
-      {
-        service = "http_status:404"
-      },
-    ]
-  }
-}
-
-resource "cloudflare_dns_record" "agent" {
-  zone_id = data.cloudflare_zone.this.zone_id
-  name    = var.agent_hostname
-  type    = "CNAME"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.agent.id}.cfargotunnel.com"
-  proxied = true
-  ttl     = 1
-  comment = "valve-controller agent tunnel"
-}
-
-data "cloudflare_zero_trust_tunnel_cloudflared_token" "agent" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.agent.id
 }
 
 # ───────────── Cloudflare Access in front of the UI and API ─────────────

@@ -1,0 +1,22 @@
+{
+  "rid": "11111111-2222-3333-4444-555555555555",
+  "refresh_token": "abcdef0123456789abcdef0123456789",
+  "hash_key": "30fb6eaba4c0c2cdd5fb53661cd03c9b",
+  "secret": "e62681c448ad532e",
+  "body": "{\"commands\":[{\"code\":\"switch_1\",\"value\":true}]}",
+  "query": "{\"devIds\":\"bf4b1ef505b917bc15jnng\"}",
+  "enc_body": "QUJDREVGR0hKS01OMJxlmUETvyWJl5P6GE4v0gc8eVSF7A2RTlMSo6iQszBbZPEf7fxz49ZbULT8MEtDFtklfZhsYnfxaabj6naf",
+  "enc_query": "QUJDREVGR0hKS01OMJxik1o3ujjP3pOiJQFvgA0+KUaKrEfXEEUS+sLL/3IeMO2mhbGZeLaa6O0zeritrhxT",
+  "headers": {
+    "X-appKey": "HA_3y9q4ak7g4ephrvke",
+    "X-requestId": "11111111-2222-3333-4444-555555555555",
+    "X-sid": "",
+    "X-time": "1700000000000",
+    "X-token": "tok123"
+  },
+  "sign_with_query_and_body": "285896f8b4ec9f37f2702fa2aa285c506f2c0821c080e8408d73b2f38836cc61",
+  "sign_body_only": "7746e695cb1154eb8c769b30083a1b37bfaee7b597473d6de9138015511b1f5e",
+  "sign_no_token_no_payload": "4764680fc78ce1dd2e0996b03aeea5e9d9d7139d87af5d6f084b4598b1c553e8",
+  "decrypt_input": "QUJDREVGR0hKS01OMJxlmUETvyWJl5P6GE4v0gc8eVSF7A2RTlMSo6iQszBbZPEf7fxz49ZbULT8MEtDFtklfZhsYnfxaabj6naf",
+  "decrypt_expected": "{\"commands\":[{\"code\":\"switch_1\",\"value\":true}]}"
+}

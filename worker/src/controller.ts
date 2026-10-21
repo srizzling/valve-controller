@@ -1,5 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import { closeValve, openValve, valveStatus } from "./agent";
 import type { Env } from "./env";
 import { ping } from "./heartbeat";
 import type { Signal } from "./heartbeat";
@@ -7,6 +6,9 @@ import { notify } from "./ntfy";
 import { advance, defaultConfig, dueSchedule, idleState, nextRunAt, startRun, wateredSoFar } from "./plan";
 import type { Config, RunState, Trigger } from "./plan";
 import { fetchForecast, rainVerdict } from "./rain";
+import { TuyaAuthError } from "./tuya";
+import { Valve } from "./valve";
+import type { ValveStatus } from "./valve";
 
 export interface HistoryEntry {
   at: number;
@@ -35,6 +37,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export class Controller extends DurableObject<Env> {
   private queue: Promise<unknown> = Promise.resolve();
+  private valve = new Valve(this.ctx.storage, this.env);
 
   // Storage is consistent, but awaiting a network call lets other requests interleave.
   // Run every state-changing operation one at a time.
@@ -64,6 +67,10 @@ export class Controller extends DurableObject<Env> {
     return { state: await this.getState(), config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, this.env.TIMEZONE), history };
   }
 
+  getValve(): Promise<ValveStatus> {
+    return this.valve.status();
+  }
+
   start(trigger: Trigger): Promise<{ ok: boolean; message: string }> {
     return this.serial(() => this.doStart(trigger));
   }
@@ -75,7 +82,7 @@ export class Controller extends DurableObject<Env> {
       let note = "stopped by request";
       let ok = true;
       try {
-        await closeValve(this.env);
+        await this.valve.close();
       } catch (e) {
         ok = false;
         note = `stop requested but the valve did not confirm closing (${message(e)}); the agent keeps retrying`;
@@ -122,9 +129,23 @@ export class Controller extends DurableObject<Env> {
       if (state.phase === "idle") return;
       const now = Date.now();
       const step = advance(state, now);
+
+      // Is the valve where the plan says it is? Someone using the Smart Life app mid-run would change it, and a valve
+      // left open when it should be soaking is the one thing we must not carry on from.
+      const expectedOpen = state.phase === "watering";
       try {
-        if (step.valve === "close") await closeValve(this.env);
-        else if (step.valve === "open") await openValve(this.env, step.next.onSeconds);
+        const actual = await this.valve.status();
+        if (actual.open !== expectedOpen) {
+          await this.abort(state, `The valve was ${actual.open ? "opened" : "closed"} outside the controller while it should have been ${expectedOpen ? "watering" : "soaking"}. Run stopped.`);
+          return;
+        }
+      } catch {
+        // can't tell right now; the step below will report a real failure if Tuya really is unreachable
+      }
+
+      try {
+        if (step.valve === "close") await this.valve.close();
+        else if (step.valve === "open") await this.valve.open(step.next.onSeconds);
       } catch (e) {
         const attempts = state.attempts + 1;
         if (attempts < MAX_ATTEMPTS) {
@@ -173,9 +194,9 @@ export class Controller extends DurableObject<Env> {
 
     const run = startRun(config, trigger, now);
     try {
-      await openValve(this.env, run.onSeconds);
+      await this.valve.open(run.onSeconds);
     } catch (e) {
-      await closeValve(this.env).catch(() => undefined);
+      await this.valve.close().catch(() => undefined);
       const note = `could not open the valve: ${message(e)}`;
       await this.record({ at: now, trigger, outcome: "error", wateredSeconds: 0, note });
       await notify(this.env, { title: "Valve: failed to start", message: note, tags: ["rotating_light"], priority: 5 });
@@ -191,7 +212,7 @@ export class Controller extends DurableObject<Env> {
   }
 
   private async abort(state: RunState, note: string): Promise<void> {
-    await closeValve(this.env).catch(() => undefined);
+    await this.valve.close().catch(() => undefined);
     await this.ctx.storage.put("state", idleState);
     await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "error", wateredSeconds: wateredSoFar(state, Date.now()), note });
     await notify(this.env, { title: "Valve: run aborted", message: note, tags: ["rotating_light"], priority: 5 });
@@ -203,15 +224,25 @@ export class Controller extends DurableObject<Env> {
     if (trigger === "schedule") await ping(this.env, signal, body);
   }
 
-  /** Shortly before a scheduled start: is the agent reachable, and is the valve unexpectedly open? */
+  /** Shortly before a scheduled start: can we reach the valve, is it online, and is it unexpectedly open? */
   private async preflight(at: string): Promise<void> {
     try {
-      const status = (await valveStatus(this.env)) as { open?: boolean };
+      const status = await this.valve.status();
       if (status.open) {
         await notify(this.env, { title: "Valve: open while idle", message: `The valve is open but no run is active (next run ${at}). Something left it on.`, tags: ["rotating_light"], priority: 5 });
+      } else if (!status.online) {
+        await notify(this.env, { title: "Valve: offline", message: `The ${at} run is 10 minutes away but Tuya reports the valve offline. Check its Wi-Fi and batteries.`, tags: ["warning"], priority: 4 });
+      } else if (status.batteryPct !== undefined && status.batteryPct <= 20) {
+        await notify(this.env, { title: "Valve: low battery", message: `The valve battery is at ${status.batteryPct}%.`, tags: ["battery"], priority: 3 });
       }
     } catch (e) {
-      await notify(this.env, { title: "Valve: agent unreachable", message: `The ${at} run is 10 minutes away but the valve agent did not answer: ${message(e)}`, tags: ["warning"], priority: 4 });
+      const expired = e instanceof TuyaAuthError;
+      await notify(this.env, {
+        title: expired ? "Valve: Tuya login expired" : "Valve: cannot reach the valve",
+        message: expired ? `${message(e)} The ${at} run will fail until you do.` : `The ${at} run is 10 minutes away but Tuya's cloud did not answer: ${message(e)}`,
+        tags: ["warning"],
+        priority: expired ? 5 : 4,
+      });
     }
   }
 

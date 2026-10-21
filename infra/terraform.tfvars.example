@@ -1,7 +1,6 @@
 cloudflare_account_id = "0123456789abcdef0123456789abcdef"
 zone_name             = "example.com"
 app_hostname          = "valve.example.com"
-agent_hostname        = "valve-agent.example.com"
 zero_trust_team       = "yourteam"
 allowed_emails        = ["you@example.com"]
 
@@ -14,3 +13,8 @@ healthchecks_channel_kinds = ["email"]
 
 # Optional: Google Home
 # google_project_id = "my-valve-project"
+
+# Written by scripts/tuya-login.py
+tuya_device_id      = ""
+tuya_switch_code    = "switch_1"
+tuya_countdown_code = "countdown_1"

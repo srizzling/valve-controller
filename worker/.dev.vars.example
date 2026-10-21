@@ -1,6 +1,7 @@
-# Copy to .dev.vars for `wrangler dev`. Production values are set with `wrangler secret put`.
+# Copy to .dev.vars for `wrangler dev`. Production values come from Terraform.
 LINK_PASSWORD=local-link-password
-DEV_BYPASS_ACCESS=true
-AGENT_TOKEN=local-agent-token
 SIGNING_KEY=local-signing-key
-AGENT_URL=http://127.0.0.1:8080
+DEV_BYPASS_ACCESS=true
+TUYA_DEVICE_ID=dev1
+# The login from scripts/tuya-login.py, or point endpoint at a fake Tuya server to try runs without the real valve.
+TUYA_SESSION={"client_id":"HA_test","user_code":"UC","terminal_id":"term","endpoint":"http://127.0.0.1:8793","uid":"u","access_token":"tok0","refresh_token":"ref0","expire_time":7200,"t":1700000000000}

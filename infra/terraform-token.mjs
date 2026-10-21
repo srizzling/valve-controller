@@ -34,13 +34,12 @@ const fail = (m) => {
 // What the Terraform in infra/ touches. Names are Cloudflare's own permission group names.
 const ACCOUNT_GROUPS = [
   "Workers Scripts Write", // worker, versions, deployment, cron trigger, custom domain, workers.dev switch
-  "Cloudflare Tunnel Write", // tunnel, its config and its token
   "Access: Apps and Policies Write", // the two Access applications and their policies
   "Access: Organizations, Identity Providers, and Groups Write", // the Zero Trust organisation (team address)
 ];
 const ZONE_GROUPS = [
   "Zone Read", // look the zone up by name
-  "DNS Write", // CNAME to the tunnel
+  "DNS Write", // the custom domain's record
   "Workers Routes Write", // custom domain for the Worker
 ];
 
@@ -131,7 +130,6 @@ const verify = await cf("GET", `/accounts/${account}/tokens/verify`, undefined, 
 if (!verify.success || verify.result?.status !== "active") fail(`the new token did not verify: ${explain(verify)}. It was created but not saved; delete it in the dashboard.`);
 const probes = [
   ["Workers", `/accounts/${account}/workers/scripts`],
-  ["Tunnel", `/accounts/${account}/cfd_tunnel?per_page=1`],
   ["Access", `/accounts/${account}/access/apps?per_page=1`],
   ["Zones", `/zones?account.id=${account}&per_page=1`],
 ];

@@ -6,17 +6,12 @@ variable "cloudflare_account_id" {
 
 variable "zone_name" {
   type        = string
-  description = "A zone in that account, for example example.com. The UI and the agent get hostnames under it."
+  description = "A zone in that account, for example example.com. The UI gets a hostname under it."
 }
 
 variable "app_hostname" {
   type        = string
   description = "Public hostname of the UI and API, for example valve.example.com."
-}
-
-variable "agent_hostname" {
-  type        = string
-  description = "Public hostname of the Cloudflare Tunnel that fronts the homelab agent, for example valve-agent.example.com."
 }
 
 variable "zero_trust_team" {
@@ -100,4 +95,30 @@ variable "google_project_id" {
   type        = string
   default     = ""
   description = "Project id of your Google Home cloud-to-cloud integration. Leave empty to leave Google Home switched off."
+}
+
+# ───────────── The valve, through Tuya's cloud ─────────────
+variable "tuya_session" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "The Tuya login written by scripts/tuya-login.py (TF_VAR_tuya_session in infra/.env). Without it the Worker cannot reach the valve."
+}
+
+variable "tuya_device_id" {
+  type        = string
+  default     = ""
+  description = "The valve's Tuya device id, written to terraform.tfvars by scripts/tuya-login.py."
+}
+
+variable "tuya_switch_code" {
+  type        = string
+  default     = "switch_1"
+  description = "The data point that opens and closes the valve."
+}
+
+variable "tuya_countdown_code" {
+  type        = string
+  default     = "countdown_1"
+  description = "The data point for the valve's own auto-close timer, the failsafe if the Worker stops. Empty if the valve has none."
 }

@@ -3,20 +3,21 @@
 
 locals {
   worker_vars = {
-    AGENT_URL          = local.agent_url
-    TIMEZONE           = var.timezone
-    LATITUDE           = var.latitude
-    LONGITUDE          = var.longitude
-    NTFY_URL           = var.ntfy_url
-    NTFY_TOPIC         = local.ntfy_topic
-    GOOGLE_PROJECT_ID  = var.google_project_id
-    ACCESS_TEAM_DOMAIN = cloudflare_zero_trust_organization.this.auth_domain
-    ACCESS_AUD         = cloudflare_zero_trust_access_application.ui.aud
+    TUYA_DEVICE_ID      = var.tuya_device_id
+    TUYA_SWITCH_CODE    = var.tuya_switch_code
+    TUYA_COUNTDOWN_CODE = var.tuya_countdown_code
+    TIMEZONE            = var.timezone
+    LATITUDE            = var.latitude
+    LONGITUDE           = var.longitude
+    NTFY_URL            = var.ntfy_url
+    NTFY_TOPIC          = local.ntfy_topic
+    GOOGLE_PROJECT_ID   = var.google_project_id
+    ACCESS_TEAM_DOMAIN  = cloudflare_zero_trust_organization.this.auth_domain
+    ACCESS_AUD          = cloudflare_zero_trust_access_application.ui.aud
   }
 
   worker_secrets = merge(
     {
-      AGENT_TOKEN          = random_password.agent_token.result
       SIGNING_KEY          = random_password.signing_key.result
       LINK_PASSWORD        = random_password.link_password.result
       HEALTHCHECK_URL      = healthchecksio_check.scheduled_run.ping_url
@@ -24,6 +25,7 @@ locals {
       GOOGLE_CLIENT_SECRET = random_password.google_client_secret.result
     },
     var.ntfy_token != "" ? { NTFY_TOKEN = var.ntfy_token } : {},
+    var.tuya_session != "" ? { TUYA_SESSION = var.tuya_session } : {},
   )
 
   # Every element needs the same keys, so unused ones are null.

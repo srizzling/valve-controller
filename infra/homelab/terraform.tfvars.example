@@ -1,5 +1,0 @@
-cloudflare_account_id = "0123456789abcdef0123456789abcdef"
-docker_host           = "ssh://you@bowser"
-tuya_device_id        = "..."
-tuya_ip               = "192.168.1.50"
-# tuya_local_key: set TF_VAR_tuya_local_key (in infra/.env)
