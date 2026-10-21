@@ -34,7 +34,8 @@ const fail = (msg) => {
   process.exit(1);
 };
 
-const token = process.env.CLOUDFLARE_API_TOKEN;
+// Once `node terraform-token.mjs` has run, the broad token is kept as CLOUDFLARE_SETUP_TOKEN and CLOUDFLARE_API_TOKEN is the narrow one.
+const token = process.env.CLOUDFLARE_SETUP_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN;
 if (!token) fail("set CLOUDFLARE_API_TOKEN in the environment or infra/.env (see the top of this file for the permissions it needs).");
 
 // Keep the bucket name in one place: the backend block in versions.tf.

@@ -102,17 +102,25 @@ All secrets live in one git-ignored file, `infra/.env` (see `infra/.env.example`
 
 ```sh
 cd infra
-cp .env.example .env                                 # delete the lines you do not use, then fill in CLOUDFLARE_API_TOKEN
-                                                     # (for setup it needs Account API Tokens:Edit + Workers R2 Storage:Edit)
+cp .env.example .env                                 # delete the lines you do not use; put ONE broad token in CLOUDFLARE_API_TOKEN
+                                                     # (Account API Tokens:Edit + Workers R2 Storage:Edit)
 make setup                                           # one time: state bucket, bucket-scoped R2 keys (added to .env), backend.hcl, terraform.tfvars
+make token                                           # creates the narrow token Terraform needs, saves it as CLOUDFLARE_API_TOKEN,
+                                                     # keeps the broad one as CLOUDFLARE_SETUP_TOKEN
 $EDITOR terraform.tfvars                             # zone, hostnames, your email, timezone, coordinates
-$EDITOR .env                                         # swap in a narrower Terraform token (see versions.tf), add TF_VAR_healthchecks_api_key
+$EDITOR .env                                         # add TF_VAR_healthchecks_api_key
 make init && make apply                              # builds the Worker bundle, then applies
 
 cd homelab                                           # the agent, from your machine
 cp terraform.tfvars.example terraform.tfvars         # docker host, Tuya device id and IP; TF_VAR_tuya_local_key goes in ../.env
 make init && make apply
 ```
+
+`make token` gives Terraform only what it manages: Workers Scripts, Cloudflare Tunnel and Access apps on the account, and
+Zone Read, DNS and Workers Routes on your zone. Run it again with `--rotate` (`node terraform-token.mjs --rotate`) after
+you add your domain and set `zone_name`, to narrow the zone permissions from "all zones in the account" to that one zone.
+The broad setup token can create other tokens, so delete it in the dashboard once you no longer need it (`make setup` and
+`make token` need it again for a rotation).
 
 `make` uses `terraform` and the committed lock files are for it. OpenTofu works too (`make apply TF=tofu`) but rewrites
 the lock files.
