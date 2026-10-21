@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "dd9680c77017bc99419b193f15355a0daa875e4a"
+      "revision": "1e289c076f342db0f299b8aab507c4a0b96fe3cf"
     }
   },
   "components": [
@@ -463,7 +463,7 @@
       "dot": "amber",
       "title": "Provisioning",
       "items": [
-        "infra/ (Terraform) creates the Worker, cron, Access, tunnel, DNS and the check; GitHub Actions applies it on every merge to main",
+        "infra/ (Terraform) creates the Worker, cron, Access, the Zero Trust team address, tunnel, DNS and the check; GitHub Actions applies it on every merge to main",
         "Terraform state is kept in a private R2 bucket, never in git",
         "infra/homelab runs the agent and cloudflared; CI cannot reach the homelab, so it is applied by hand"
       ]
