@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Configures the GitHub repository from code. Uses the `gh` CLI, so run `gh auth login` first. Safe to run again.
 //
-//   node scripts/github-setup.mjs settings   repo settings, Dependabot alerts, Actions defaults, branch protection  (default)
+//   node scripts/github-setup.mjs settings   repo settings, Dependabot alerts, Actions defaults  (default)
 //   node scripts/github-setup.mjs secrets    copy infra/.env and infra/terraform.tfvars into Actions secrets and variables
 //   node scripts/github-setup.mjs all
 //
+//   --protect        also protect main (a PR and a passing ci-ok; needs GitHub Pro or a public repo)
 //   --dry-run        say what would change, change nothing (never prints secret values)
 //   --env FILE       secrets file          (default infra/.env)
 //   --tfvars FILE    Terraform variables   (default infra/terraform.tfvars)
@@ -70,7 +71,7 @@ function settings() {
     allow_auto_merge: true,
     squash_merge_commit_title: "PR_TITLE",
     squash_merge_commit_message: "PR_BODY",
-  }, "squash merges only, delete branches after merge, auto-merge allowed (takes effect once branch protection is on)");
+  }, "squash merges only, delete branches after merge, auto-merge allowed");
 
   console.log("\nDependency security");
   api("PUT", `repos/${repo}/vulnerability-alerts`, undefined, "Dependabot alerts on");
@@ -81,6 +82,7 @@ function settings() {
   console.log("\nGitHub Actions");
   api("PUT", `repos/${repo}/actions/permissions/workflow`, { default_workflow_permissions: "read", can_approve_pull_request_reviews: false }, "workflows get a read-only token by default");
 
+  if (!argv.includes("--protect")) return console.log(`\nBranch protection on ${BRANCH}: not requested (pass --protect to turn it on)`);
   console.log(`\nBranch protection on ${BRANCH}`);
   const r = api("PUT", `repos/${repo}/branches/${BRANCH}/protection`, {
     required_status_checks: { strict: true, contexts: [REQUIRED_CHECK] },
@@ -149,7 +151,7 @@ function secrets() {
 }
 
 if (!["settings", "secrets", "all"].includes(command)) {
-  console.error("usage: github-setup.mjs [settings|secrets|all] [--dry-run] [--env FILE] [--tfvars FILE]");
+  console.error("usage: github-setup.mjs [settings|secrets|all] [--protect] [--dry-run] [--env FILE] [--tfvars FILE]");
   process.exit(2);
 }
 if (command === "settings" || command === "all") settings();
