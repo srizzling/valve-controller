@@ -1,0 +1,100 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Australia/Melbourne",
+  "schedule": [
+    "before 7am on monday"
+  ],
+  "prConcurrentLimit": 5,
+  "labels": [
+    "dependencies"
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 7am on the first day of the month"
+    ]
+  },
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Worker dev tooling: group small updates and merge them once CI is green",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "worker/package.json"
+      ],
+      "matchDepTypes": [
+        "devDependencies"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "worker dev dependencies",
+      "automerge": true
+    },
+    {
+      "description": "Worker runtime dependencies are reviewed by hand",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "worker/package.json"
+      ],
+      "matchDepTypes": [
+        "dependencies"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Agent Python dependencies, including tinytuya which talks to the real valve: review by hand",
+      "matchManagers": [
+        "pip_requirements"
+      ],
+      "groupName": "agent python dependencies",
+      "automerge": false
+    },
+    {
+      "description": "Terraform providers change what gets deployed: review the plan first",
+      "matchManagers": [
+        "terraform"
+      ],
+      "groupName": "terraform providers",
+      "automerge": false
+    },
+    {
+      "description": "Docker base images for the agent and cloudflared",
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "GitHub Actions: pinned by digest, patch and digest bumps merge once CI is green",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions",
+      "matchUpdateTypes": [
+        "patch",
+        "digest",
+        "pin",
+        "pinDigest"
+      ],
+      "automerge": true
+    }
+  ]
+}

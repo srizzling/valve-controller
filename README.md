@@ -79,7 +79,12 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 
 ## Infrastructure as code (Terraform)
 
-`infra/` creates everything on Cloudflare and healthchecks.io, and optionally runs the agent on the homelab:
+There are two Terraform roots with separate state:
+
+- `infra/` is the cloud: everything on Cloudflare and healthchecks.io. **GitHub Actions applies it** on every merge to `main`.
+- `infra/homelab/` runs the agent and `cloudflared` on your Docker host over SSH. GitHub's runners cannot reach the
+  homelab, so you apply this one from your machine. Keeping it separate also stops a CI apply from trying to remove
+  the containers.
 
 | Managed by Terraform | Resource |
 | --- | --- |
@@ -89,21 +94,28 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 | Login in front of the UI, bypass for Google paths | `cloudflare_zero_trust_access_application` (two) |
 | Tunnel to the agent, its route and DNS | `cloudflare_zero_trust_tunnel_cloudflared`, `_config`, `cloudflare_dns_record` |
 | Missed-run alert | `healthchecksio_check` |
-| Agent and cloudflared containers on the homelab (optional) | `docker_container` over SSH |
 | Every token, key and the ntfy topic name | `random_*`, read back with `terraform output` |
+| Agent and cloudflared containers (`infra/homelab/`) | `docker_container` over SSH |
+
+All secrets live in one git-ignored file, `infra/.env` (see `infra/.env.example`). `make` loads it, and
+`node scripts/github-setup.mjs secrets` copies it into GitHub when you are ready.
 
 ```sh
 cd infra
-export CLOUDFLARE_API_TOKEN=...                      # for setup only: Account API Tokens:Edit + Workers R2 Storage:Edit
-make setup                                           # one time: state bucket, bucket-scoped R2 keys, backend.hcl, .env, terraform.tfvars
+cp .env.example .env                                 # delete the lines you do not use, then fill in CLOUDFLARE_API_TOKEN
+                                                     # (for setup it needs Account API Tokens:Edit + Workers R2 Storage:Edit)
+make setup                                           # one time: state bucket, bucket-scoped R2 keys (added to .env), backend.hcl, terraform.tfvars
 $EDITOR terraform.tfvars                             # zone, hostnames, your email, timezone, coordinates
-export CLOUDFLARE_API_TOKEN=...                      # now a token for Terraform itself, see versions.tf for the permissions
-export TF_VAR_healthchecks_api_key=...
-export TF_VAR_tuya_local_key=...                     # only if docker_host is set
+$EDITOR .env                                         # swap in a narrower Terraform token (see versions.tf), add TF_VAR_healthchecks_api_key
 make init && make apply                              # builds the Worker bundle, then applies
+
+cd homelab                                           # the agent, from your machine
+cp terraform.tfvars.example terraform.tfvars         # docker host, Tuya device id and IP; TF_VAR_tuya_local_key goes in ../.env
+make init && make apply
 ```
 
-`make` uses `terraform`; run `make apply TF=tofu` for OpenTofu. Both work.
+`make` uses `terraform` and the committed lock files are for it. OpenTofu works too (`make apply TF=tofu`) but rewrites
+the lock files.
 
 Still manual, because there is no API for them:
 
@@ -136,6 +148,47 @@ state into the bucket, run `terraform init -migrate-state -backend-config=backen
 
 Terraform is the source of truth for the Worker's variables and secrets. `worker/wrangler.jsonc` is only used for
 `wrangler dev` and for building the bundle, so do not `wrangler deploy` as well: it would replace what Terraform set.
+
+## CI/CD and GitHub
+
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`:
+
+| Job | What it does |
+| --- | --- |
+| Worker | typecheck, tests, and the same bundle build Terraform deploys |
+| Agent | the Python tests |
+| Terraform (two roots) | `fmt`, `init -backend=false`, `validate` against the locked providers |
+| Architecture diagram is current | warns (does not block) when the diagram is behind the code |
+| `ci-ok` | one gate that fails if any of the above failed. Branch protection requires this check |
+| Terraform plan / apply | `plan` on every run, `apply` only on `main`, one run at a time (the state has no locking) |
+
+Every action is pinned to a commit. The plan and apply job needs the secrets and variables below and does nothing
+until they exist: it prints which ones are missing and exits cleanly.
+
+```sh
+node scripts/github-setup.mjs secrets    # copies infra/.env and infra/terraform.tfvars into GitHub
+node scripts/github-setup.mjs secrets --dry-run   # shows the names it would set, never the values
+```
+
+| Where | Name | Comes from |
+| --- | --- | --- |
+| secret | `CLOUDFLARE_API_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TF_VAR_healthchecks_api_key`, `TF_VAR_ntfy_token` | `infra/.env` |
+| variable | `TFVARS`, `CLOUDFLARE_ACCOUNT_ID` | `infra/terraform.tfvars` |
+
+Anyone who can change a workflow on a branch can read these secrets when it runs, so keep the repository private or
+single-owner, and keep branch protection on.
+
+**Repository settings** are code too: `node scripts/github-setup.mjs settings` (safe to repeat) sets squash-only merges,
+deletes merged branches, turns Dependabot alerts on, makes workflow tokens read-only, and protects `main`: a pull
+request with a passing `ci-ok`, no force pushes, no deletion, linear history. Admins can still push in an emergency;
+set `enforce_admins` to `true` in the script to remove that. Branch protection needs GitHub Pro or a public repository.
+
+**Dependencies.** Dependabot alerts watch for known vulnerabilities. Renovate (`renovate.json`) opens the update PRs,
+including the security ones it reads from those alerts, so Dependabot's own security PRs are switched off to avoid
+duplicates. It covers the Worker's npm packages, the agent's Python packages, Terraform providers and lock files, the
+Docker images and the Actions pins. Dev tooling patches and Actions pins merge themselves once CI is green; everything
+that changes runtime behaviour waits for you. Renovate runs as a GitHub App: install it once at
+<https://github.com/apps/renovate> and give it this repository.
 
 ## Setup by hand
 

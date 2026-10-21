@@ -11,9 +11,9 @@ build:
 setup:
 	node setup.mjs
 
-# The R2 keys come from .env, written by `make setup`.
+# Every secret comes from .env (see .env.example); `make setup` adds the R2 keys to it.
 -include .env
-export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+.EXPORT_ALL_VARIABLES:
 
 init:
 	$(TF) init -backend-config=backend.hcl

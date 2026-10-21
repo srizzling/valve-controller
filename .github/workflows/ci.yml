@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  worker:
+    name: Worker (types, tests, bundle)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # The same bundle Terraform deploys, so a build break shows up here first.
+      - run: npm run build
+
+  agent:
+    name: Agent (tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: agent/requirements*.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  terraform-validate:
+    name: Terraform (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [infra, infra/homelab]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ~1.16.0
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive
+      # No backend and no credentials: this only proves the configuration is valid against the locked providers.
+      - run: terraform init -backend=false -lockfile=readonly
+      - run: terraform validate
+
+  # Advisory: tells you the architecture diagram is behind the code, without blocking the merge.
+  architecture:
+    name: Architecture diagram is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the check compares the diagram's pinned commit with this one
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - name: Check
+        run: |
+          if node scripts/arch.mjs check > /tmp/arch.json 2> /tmp/arch.txt; then
+            echo "Architecture diagram is current."
+          else
+            cat /tmp/arch.txt
+            echo "::warning title=Architecture diagram is stale::$(head -c 500 /tmp/arch.txt)"
+          fi
+
+  # The one check branch protection requires.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [worker, agent, terraform-validate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "All required jobs passed."
+
+  # Plan on every run, apply only on main. Needs the secrets and variables from `node scripts/github-setup.mjs secrets`;
+  # without them this job says what is missing and exits cleanly.
+  deploy:
+    name: Terraform plan / apply
+    needs: ci-ok
+    runs-on: ubuntu-latest
+    # State has no locking, so only one run may touch it at a time, and a run is never cancelled half way.
+    concurrency:
+      group: terraform-state
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_healthchecks_api_key: ${{ secrets.TF_VAR_healthchecks_api_key }}
+      TF_VAR_ntfy_token: ${{ secrets.TF_VAR_ntfy_token }}
+      TFVARS: ${{ vars.TFVARS }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_IN_AUTOMATION: "1"
+    steps:
+      - name: Check configuration
+        id: cfg
+        run: |
+          missing=""
+          for v in CLOUDFLARE_API_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY TF_VAR_healthchecks_api_key TFVARS CLOUDFLARE_ACCOUNT_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Terraform skipped::Not configured yet. Missing:$missing. Run: node scripts/github-setup.mjs secrets"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.cfg.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: steps.cfg.outputs.ready == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - if: steps.cfg.outputs.ready == 'true'
+        name: Build the Worker bundle
+        working-directory: worker
+        run: |
+          npm ci
+          npm run build
+      - if: steps.cfg.outputs.ready == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ~1.16.0
+          terraform_wrapper: false
+      - if: steps.cfg.outputs.ready == 'true'
+        name: Write configuration
+        working-directory: infra
+        run: |
+          printf '%s\n' "$TFVARS" > terraform.tfvars
+          printf 'endpoints = { s3 = "https://%s.r2.cloudflarestorage.com" }\n' "$CLOUDFLARE_ACCOUNT_ID" > backend.hcl
+      - if: steps.cfg.outputs.ready == 'true'
+        name: Init
+        working-directory: infra
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.hcl
+      - if: steps.cfg.outputs.ready == 'true'
+        name: Plan
+        working-directory: infra
+        run: |
+          terraform plan -input=false -no-color -out=tfplan | tee plan.txt
+          { echo '### Terraform plan'; echo '```'; tail -n 60 plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - if: steps.cfg.outputs.ready == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Apply
+        working-directory: infra
+        run: terraform apply -input=false -no-color tfplan

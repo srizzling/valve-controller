@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // One-time setup for the Terraform state backend. Safe to run again.
 //
-//   CLOUDFLARE_API_TOKEN=... node setup.mjs [--rotate] [--dry-run]
+//   node setup.mjs [--rotate] [--dry-run]        (CLOUDFLARE_API_TOKEN from the environment or .env)
 //
 // It creates the private R2 bucket that holds the state, creates R2 keys that can only touch that bucket, and writes
-// backend.hcl, .env (git-ignored, mode 600) and, if missing, terraform.tfvars with your account id filled in.
+// backend.hcl, .env (git-ignored, mode 600; other lines in it are kept) and, if missing, terraform.tfvars with your account id filled in.
+// CLOUDFLARE_API_TOKEN may live in .env (see .env.example).
 //
 // The token you run it with needs, on the account: "Account API Tokens: Edit" (to create the R2 keys) and
 // "Workers R2 Storage: Edit" (to create the bucket). It is only used here. Terraform itself should use a narrower token.
@@ -16,6 +17,13 @@ import { fileURLToPath } from "node:url";
 const DIR = dirname(fileURLToPath(import.meta.url));
 const API = process.env.CLOUDFLARE_API_BASE ?? "https://api.cloudflare.com/client/v4";
 const PERMISSION = "Workers R2 Storage Bucket Item Write"; // read, write and list objects in chosen buckets
+const envPath = join(DIR, ".env");
+const parseEnv = () =>
+  Object.fromEntries(
+    (existsSync(envPath) ? readFileSync(envPath, "utf8") : "").split("\n").filter((l) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(l)).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
+  );
+// .env is the home for every Terraform secret. Anything already in the environment wins over it.
+for (const [k, v] of Object.entries(parseEnv())) process.env[k] ??= v;
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const rotate = args.has("--rotate");
@@ -27,7 +35,7 @@ const fail = (msg) => {
 };
 
 const token = process.env.CLOUDFLARE_API_TOKEN;
-if (!token) fail("set CLOUDFLARE_API_TOKEN (see the comment at the top of this file for the permissions it needs).");
+if (!token) fail("set CLOUDFLARE_API_TOKEN in the environment or infra/.env (see the top of this file for the permissions it needs).");
 
 // Keep the bucket name in one place: the backend block in versions.tf.
 const bucket = /bucket\s*=\s*"([^"]+)"/.exec(readFileSync(join(DIR, "versions.tf"), "utf8"))?.[1];
@@ -72,9 +80,7 @@ if (existing.success) {
 }
 
 // 3. R2 keys limited to that bucket
-const envPath = join(DIR, ".env");
-const readEnv = () => Object.fromEntries((existsSync(envPath) ? readFileSync(envPath, "utf8") : "").split("\n").filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
-const current = readEnv();
+const current = parseEnv();
 let keys = current.AWS_ACCESS_KEY_ID && current.AWS_SECRET_ACCESS_KEY && !rotate ? { id: current.AWS_ACCESS_KEY_ID, secret: current.AWS_SECRET_ACCESS_KEY } : null;
 
 if (keys) {
@@ -107,9 +113,12 @@ if (dryRun) {
   process.exit(0);
 }
 writeFileSync(join(DIR, "backend.hcl"), `endpoints = { s3 = "https://${account}.r2.cloudflarestorage.com" }\n`);
-writeFileSync(envPath, `AWS_ACCESS_KEY_ID=${keys.id}\nAWS_SECRET_ACCESS_KEY=${keys.secret}\n`);
+// Merge into .env: replace only the two R2 key lines and keep everything else (your other secrets, comments).
+const kept = (existsSync(envPath) ? readFileSync(envPath, "utf8") : "").split("\n").filter((l) => !/^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY)=/.test(l));
+while (kept.length && kept[kept.length - 1] === "") kept.pop();
+writeFileSync(envPath, `${[...kept, `AWS_ACCESS_KEY_ID=${keys.id}`, `AWS_SECRET_ACCESS_KEY=${keys.secret}`].join("\n")}\n`);
 chmodSync(envPath, 0o600);
-say("wrote backend.hcl and .env (mode 600, git-ignored)");
+say("wrote backend.hcl and updated .env (mode 600, git-ignored)");
 
 const tfvars = join(DIR, "terraform.tfvars");
 if (!existsSync(tfvars)) {

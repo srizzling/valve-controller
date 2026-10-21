@@ -14,13 +14,13 @@ output "link_password" {
 }
 
 output "agent_token" {
-  description = "Only needed if you run the agent yourself instead of through docker_host."
+  description = "Only needed if you run the agent yourself instead of from homelab/."
   value       = random_password.agent_token.result
   sensitive   = true
 }
 
 output "tunnel_token" {
-  description = "Only needed if you run cloudflared yourself instead of through docker_host."
+  description = "Only needed if you run cloudflared yourself instead of from homelab/."
   value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.agent.token
   sensitive   = true
 }
