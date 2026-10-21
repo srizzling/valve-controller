@@ -7,6 +7,12 @@ output, and against an independent mock of Tuya's server.
 - **Opening** sends the on/off command together with the valve's own **countdown** set to the run length plus 90 seconds,
   then asks the valve to confirm it reports open. If the Worker or Cloudflare ever stops, the valve closes itself. That is
   the failsafe. A valve with no countdown function runs without one (`tuya_countdown_code = ""`).
+- **The one-hour supervisor** checks every minute, whether or not a run is active, for two things: the valve open for
+  more than an hour (left on in the Smart Life app, say, or a close that never happened), and a run that has been going
+  for more than an hour from its start, soaks included. Either way the Worker closes the valve, ends any run, records an
+  error in the history and sends a priority 5 ntfy. If the close fails it alerts and tries again each minute. A run
+  you configure to take longer than an hour will be stopped at the hour. The supervisor runs inside the Worker, so it
+  does not help if Cloudflare or Tuya is down; the countdown does.
 - **The login** is created once by scanning a QR code (below) and is kept in the Worker's private storage. Tuya rotates
   the refresh token each time it is used, so the Worker saves the new one every time and is the only thing that refreshes it.
 - **If the login stops working** (revoked in the app, or unused for too long), the check ten minutes before each scheduled

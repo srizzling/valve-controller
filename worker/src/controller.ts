@@ -8,6 +8,7 @@ import type { Config, RunState, Trigger } from "./plan";
 import { placeOf } from "./place";
 import { rainVerdict } from "./rain";
 import { extraRunWanted, inputsAt, smartPlan } from "./smart";
+import { MAX_OPEN_MS, MAX_RUN_MS, runOverdue, watchOpen } from "./supervisor";
 import { TuyaAuthError } from "./tuya";
 import { getWeather } from "./weather";
 import type { WeatherBundle } from "./weather";
@@ -108,6 +109,7 @@ export class Controller extends DurableObject<Env> {
   /** Called every minute by the cron trigger. */
   tick(): Promise<void> {
     return this.serial(async () => {
+      await this.supervise();
       const state = await this.getState();
       const now = Date.now();
       if (state.phase !== "idle") {
@@ -253,6 +255,54 @@ export class Controller extends DurableObject<Env> {
     await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "error", wateredSeconds: wateredSoFar(state, Date.now()), note });
     await notify(this.env, { title: "Valve: run aborted", message: note, tags: ["rotating_light"], priority: 5 });
     await this.heartbeat(state.trigger, "fail", note);
+  }
+
+  /**
+   * Independent of the plan, two hour-long limits: the valve open for over an hour (left on in the Smart Life app, or a
+   * close that never happened), or a run, soaks included, going for over an hour. Either way close the valve, end the
+   * run and shout. It watches the real valve and the clock, not the plan.
+   */
+  private async supervise(): Promise<void> {
+    let open: boolean | undefined;
+    try {
+      open = (await this.valve.status()).open;
+    } catch {
+      // can't tell right now; the run limit below still applies and the open limit is tried again next minute
+    }
+    const now = Date.now();
+    const before = (await this.ctx.storage.get<number>("openSince")) ?? null;
+    const watch = open === undefined ? { openSince: before, overdue: false } : watchOpen(before, open, now);
+    if (watch.openSince !== before) {
+      if (watch.openSince === null) await this.ctx.storage.delete("openSince");
+      else await this.ctx.storage.put("openSince", watch.openSince);
+    }
+
+    const state = await this.getState();
+    let note: string;
+    if (watch.overdue && watch.openSince !== null) {
+      note = `The valve had been open for ${mins((now - watch.openSince) / 1000)}, over the ${mins(MAX_OPEN_MS / 1000)} limit. Closed it.`;
+    } else if (state.phase !== "idle" && runOverdue(state.startedAt, now)) {
+      note = `The run had been going for ${mins((now - state.startedAt) / 1000)}, over the ${mins(MAX_RUN_MS / 1000)} limit. Stopped it and closed the valve.`;
+    } else {
+      return;
+    }
+
+    try {
+      await this.valve.close();
+    } catch (e) {
+      await notify(this.env, { title: "Valve: could not force-close", message: `${note} But the close failed (${message(e)}). Retrying every minute.`, tags: ["rotating_light"], priority: 5 });
+      return;
+    }
+    await this.ctx.storage.delete("openSince");
+    if (state.phase !== "idle") {
+      await this.ctx.storage.deleteAlarm();
+      await this.ctx.storage.put("state", idleState);
+      await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "error", wateredSeconds: wateredSoFar(state, now), note });
+      await this.heartbeat(state.trigger, "fail", note);
+    } else {
+      await this.record({ at: now, trigger: "manual", outcome: "error", wateredSeconds: 0, note });
+    }
+    await notify(this.env, { title: "Valve: force-closed", message: note, tags: ["rotating_light"], priority: 5 });
   }
 
   /** Only scheduled runs report to healthchecks.io: it exists to notice a schedule that stopped firing. */
