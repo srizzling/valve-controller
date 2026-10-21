@@ -69,13 +69,15 @@ export function smartPlan(cfg: SmartConfig, baseCycles: number, input: SmartInpu
   const dryness = input.soilMoisture === undefined ? 1 : clamp((cfg.soilWetAbove - input.soilMoisture) / (cfg.soilWetAbove - cfg.soilDryBelow), 0, 1);
   const percent = Math.round(Math.min(cfg.maxPercent, 100 * etFactor * dryness));
 
-  const level = etFactor >= 1.2 ? "hot and dry" : etFactor < 0.8 ? "cool or humid" : "typical";
-  const et = `${level} (ET ${round1(input.etMm)} mm)`;
+  const level = etFactor >= 1.2 ? "Hot, dry day" : etFactor < 0.8 ? "Cool or humid day" : "Typical day";
+  const day = `${level} (ET ${round1(input.etMm)} mm, ${Math.round(100 * etFactor)}% of normal)`;
   const soil = input.soilMoisture === undefined ? "" : dryness === 0 ? `, soil wet (${input.soilMoisture.toFixed(2)})` : dryness < 1 ? `, soil damp (${input.soilMoisture.toFixed(2)})` : `, soil dry (${input.soilMoisture.toFixed(2)})`;
 
   if (percent < cfg.minPercent) {
-    return skip(dryness === 0 ? `Soil is wet (${input.soilMoisture!.toFixed(2)} m³/m³), so no watering is needed. Weather: ${et}.` : `Low demand: ${et}${soil} works out to ${percent}% of normal, below your ${cfg.minPercent}% minimum.`);
+    return skip(dryness === 0 ? `Soil is wet (${input.soilMoisture!.toFixed(2)} m³/m³), so no watering is needed. ${day}.` : `Low demand: ${day}${soil}. That is ${percent}% of normal, below your ${cfg.minPercent}% minimum.`);
   }
   const cycles = clamp(Math.round((baseCycles * percent) / 100), 1, 20);
-  return { run: true, cycles, percent, reasons: [`${et[0].toUpperCase()}${et.slice(1)}${soil}: ${percent}% of normal, ${cycles} of ${baseCycles} cycles.`] };
+  const capped = percent >= cfg.maxPercent ? " (your maximum)" : "";
+  const count = cycles === baseCycles ? `${cycles} cycle${cycles === 1 ? "" : "s"}, same as normal` : `${cycles} cycle${cycles === 1 ? "" : "s"} instead of ${baseCycles}`;
+  return { run: true, cycles, percent, reasons: [`${day}${soil}. That is ${percent}% of normal${capped}: ${count}.`] };
 }

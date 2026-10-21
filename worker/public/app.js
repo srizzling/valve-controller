@@ -44,30 +44,6 @@ function buildScene() {
     const lean = (rand() - 0.5) * 8;
     el("path", { d: `M${x} 266 Q${x + lean / 2} ${266 - h * 0.6} ${x + lean} ${266 - h} Q${x + 4 + lean / 2} ${266 - h * 0.5} ${x + 6} 266Z`, fill: rand() > 0.5 ? "#6fcf4f" : "#57b640" }, blades);
   }
-  // a bed of little flowers along the grass: tulips, daisies, bluebells and poppies
-  const bed = $("bed");
-  for (let x = -6; x < 410; x += 13 + rand() * 9) {
-    if (Math.abs(x - 200) < 16) continue;
-    const kind = Math.floor(rand() * 5);
-    const h = 16 + rand() * 20;
-    const g = el("g", { class: "bloom", style: `transform-origin:${x}px 271px;animation-delay:${-rand() * 4}s` }, bed);
-    el("path", { d: `M${x} 273 L${x} ${270 - h}`, stroke: "#3f9b3a", "stroke-width": 2.2, "stroke-linecap": "round" }, g);
-    el("ellipse", { cx: x + 4, cy: 266 - h * 0.25, rx: 5, ry: 2, fill: "#4cb940", transform: `rotate(-30 ${x + 4} ${266 - h * 0.25})` }, g);
-    const head = el("g", { transform: `translate(${x} ${270 - h})` }, g);
-    if (kind < 2) {
-      const [fill, stroke] = kind === 0 ? ["#e8362f", "#a31d1d"] : ["#ffc933", "#d99a00"];
-      el("path", { d: "M-6 -2 C-7 -12 -3 -14 0 -9 C3 -14 7 -12 6 -2 C4 3 -4 3 -6 -2Z", fill, stroke, "stroke-width": 1 }, head);
-    } else if (kind === 2) {
-      for (let k = 0; k < 8; k++) el("ellipse", { cx: 0, cy: -5, rx: 2.2, ry: 4.6, fill: "#fff", stroke: "#cfd8e8", "stroke-width": 0.6, transform: `rotate(${k * 45})` }, head);
-      el("circle", { r: 2.6, fill: "#ffc933" }, head);
-    } else if (kind === 3) {
-      const col = rand() > 0.5 ? "#5b7cf0" : "#9a6be0";
-      for (let k = 0; k < 5; k++) el("circle", { cx: (k % 2 ? 1.6 : -1.6), cy: -k * 3.4, r: 3.4 - k * 0.4, fill: col }, head);
-    } else {
-      for (let k = 0; k < 5; k++) el("circle", { cx: Math.cos(k * 1.256) * 3.6, cy: Math.sin(k * 1.256) * 3.6, r: 3.6, fill: "#e8362f" }, head);
-      el("circle", { r: 2, fill: "#2b1b12" }, head);
-    }
-  }
   // pebbles and sediment lines in the soil
   const soil = $("soilDetail");
   for (const y of [300, 340, 385, 425]) {
@@ -116,6 +92,7 @@ function relative(ms) {
 }
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const minutesLabel = (m) => `${Math.round(m * 10) / 10} min`;
+const cyclesLabel = (n) => `${n} cycle${n === 1 ? "" : "s"}`;
 
 /* ───────────────────────── demo data ───────────────────────── */
 
@@ -136,8 +113,8 @@ function demoData(name) {
   const dry = "5% chance, 0.0 mm in the next 6h";
   const wet = "rain likely: 78% chance, 4.0 mm in the next 6h";
   const demoRuns = [
-    () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Warm and dry: 4 cycles instead of 3 (ET 5.9 mm, soil dry 0.18)." }, { at: at(0) + 11 * 3600000, state: "will-run", reason: dry, cycles: 3, percent: 100, scaling: "Typical (ET 4.5 mm), soil dry (0.20): 100% of normal, 3 of 3 cycles." }],
-    () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool day: 2 cycles instead of 3 (ET 2.8 mm, soil damp 0.27)." }, { at: at(1) + 11 * 3600000, state: "will-run", reason: dry, cycles: 1, percent: 33, scaling: "Cool day: 1 cycle instead of 3 (ET 2.8 mm, soil damp 0.27)." }],
+    () => rain ? run(0, "skip", wet) : [{ at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Hot, dry day (ET 5.9 mm, 131% of normal), soil dry (0.18). That is 131% of normal: 4 cycles instead of 3." }, { at: at(0) + 11 * 3600000, state: "will-run", reason: dry, cycles: 3, percent: 100, scaling: "Typical day (ET 4.5 mm, 100% of normal), soil dry (0.20). That is 100% of normal: 3 cycles, same as normal." }],
+    () => rain ? run(1, "skip", wet) : [{ at: at(1), state: "will-run", reason: dry, cycles: 2, percent: 62, scaling: "Cool or humid day (ET 2.8 mm, 62% of normal), soil damp (0.27). That is 62% of normal: 2 cycles instead of 3." }, { at: at(1) + 11 * 3600000, state: "will-run", reason: dry, cycles: 1, percent: 33, scaling: "Cool or humid day (ET 2.8 mm, 62% of normal), soil damp (0.27). That is 33% of normal: 1 cycle instead of 3." }],
     () => run(2, "skip", wet),
     () => [],
     () => [{ at: at(4), state: "skip-weather", reason: "Soil is wet (0.38 m³/m³), so no watering is needed. Weather: low (ET 1.9 mm)." }],
@@ -155,7 +132,7 @@ function demoData(name) {
       etTodayMm: rain ? 1.8 : 5.9, soilMoisture: rain ? 0.36 : 0.18,
       past24hMm: rain ? 8.4 : 0.6, next24hMm: rain ? 11.2 : 0.4, rainChanceNext24hPct: rain ? 85 : 20,
       daily: days.map((date, i) => ({ runs: demoRuns[i](date), date, condition: i === 1 && rain ? rainy : i === 3 ? grey : sunny, tMaxC: 22 - i, tMinC: 11 + (i % 3), rainMm: [0.4, rain ? 11.2 : 0.2, 3.1, 0, 0, 6.5, 1.2][i], chancePct: [20, rain ? 85 : 15, 55, 5, 0, 70, 30][i] })),
-      nextRun: { at: now + 8.2 * 3600000, planned: rain ? undefined : { at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Warm and dry: 4 cycles instead of 3 (ET 5.9 mm, soil dry 0.18)." }, verdict: rain ? { skip: true, reason: "rain likely: 85% chance, 6.2 mm in the next 6h" } : { skip: false, reason: "20% chance, 0.2 mm in the next 6h" } },
+      nextRun: { at: now + 8.2 * 3600000, planned: rain ? undefined : { at: at(0), state: "will-run", reason: dry, cycles: 4, percent: 132, scaling: "Hot, dry day (ET 5.9 mm, 131% of normal), soil dry (0.18). That is 131% of normal: 4 cycles instead of 3." }, verdict: rain ? { skip: true, reason: "rain likely: 85% chance, 6.2 mm in the next 6h" } : { skip: false, reason: "20% chance, 0.2 mm in the next 6h" } },
     },
   };
 }
@@ -213,7 +190,7 @@ function renderTicking() {
   } else {
     big = when(status.nextRunAt);
     const scaled = planned?.state === "will-run" && planned.cycles;
-    sub = `in ${relative(status.nextRunAt - now)} · ${scaled ? planned.cycles : config.cycles} × ${minutesLabel(config.onMinutes)} with ${minutesLabel(config.soakMinutes)} soaks${scaled && planned.percent !== 100 ? ` (${planned.percent}% of normal)` : ""}`;
+    sub = `in ${relative(status.nextRunAt - now)} · ${cyclesLabel(scaled ? planned.cycles : config.cycles)} of ${minutesLabel(config.onMinutes)}, ${minutesLabel(config.soakMinutes)} soak between${scaled && planned.percent !== 100 ? ` (${planned.percent}% of normal)` : ""}`;
     if (delayed) { pillText = "Rain delay active"; pillClass = "pill-delay"; }
     else if (planned?.state === "skip-weather") { pillText = "Skipping: weather"; pillClass = "pill-delay"; }
     else if (weather?.current.isRaining) { pillText = "Raining"; pillClass = "pill-raining"; }
@@ -393,7 +370,7 @@ function renderHistory() {
 
 function renderSettingsSummary() {
   const c = status.config;
-  $("settings-summary").textContent = `${c.cycles} × ${minutesLabel(c.onMinutes)} on, ${minutesLabel(c.soakMinutes)} soak`;
+  $("settings-summary").textContent = `${cyclesLabel(c.cycles)} of ${minutesLabel(c.onMinutes)}, ${minutesLabel(c.soakMinutes)} soak`;
 }
 
 function renderSchedules() {

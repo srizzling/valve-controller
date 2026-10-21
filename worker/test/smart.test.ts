@@ -14,7 +14,7 @@ describe("smartPlan scaling", () => {
   it("adds a cycle on a hot dry day, and says why", () => {
     const p = smartPlan(cfg(), 3, { etMm: 6.2, soilMoisture: 0.14 }); // this week's hot dry Fri
     expect(p).toMatchObject({ run: true, cycles: 4, percent: 138 });
-    expect(p.reasons[0]).toMatch(/hot and dry.*ET 6.2 mm.*soil dry.*138%.*4 of 3/i);
+    expect(p.reasons[0]).toMatch(/hot, dry day.*ET 6.2 mm.*soil dry.*138%.*4 cycles instead of 3/i);
   });
 
   it("never goes above the cap", () => {

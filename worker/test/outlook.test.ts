@@ -78,7 +78,7 @@ describe("plannedRuns with weather scaling", () => {
     const hot = mk({ etByDate: { "2026-10-22": 6.2 } });
     const [r] = plannedRuns(config, "2026-10-22", hot, [], now, tz);
     expect(r).toMatchObject({ state: "will-run", cycles: 4, percent: 138 });
-    expect(r.reason).toMatch(/hot and dry/i);
+    expect(r.reason).toMatch(/hot, dry day/i);
   });
 
   it("flags a day skipped for the weather: wet soil, wind or frost", () => {
