@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "7cf9118bb652da3973aa99039e4ebd79505e0c0a"
+      "revision": "99fc4dafefa7e7b557f1656be0f711e05f70d899"
     }
   },
   "components": [
@@ -102,15 +102,15 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 38,
-          "end_line": 38,
-          "label": "state + alarms"
+          "line": 133,
+          "end_line": 178,
+          "label": "alarm: cycle/soak"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 126,
-          "end_line": 148,
-          "label": "alarm: cycle/soak"
+          "line": 260,
+          "end_line": 306,
+          "label": "supervise: one-hour limits"
         },
         {
           "path": "worker/src/smart.ts",
@@ -406,7 +406,8 @@
       "items": [
         "The Controller keeps run state and uses alarms for the 10-minute and 5-minute phases",
         "Every open sets the valve's own countdown a little longer than the run, so the valve closes itself if Cloudflare is lost",
-        "Each phase change reads the valve back, and stops the run if it was changed outside the controller"
+        "Each phase change reads the valve back, and stops the run if it was changed outside the controller",
+        "Every minute a supervisor closes the valve and ends the run if the valve has been open, or a run has gone on, for more than an hour"
       ]
     },
     {
