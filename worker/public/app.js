@@ -144,9 +144,10 @@ function demoData(name) {
 function sceneState() {
   const phase = status?.state.phase ?? "idle";
   const w = weather?.current;
-  const kind = w?.condition.kind ?? "clear";
   const raining = !!w?.isRaining;
-  // the sky follows the real weather; a rain *forecast* alone never makes it rain
+  // the sky follows the real weather; a rain *forecast* alone never makes it rain.
+  // Without weather data the sky stays overcast rather than claiming sun.
+  const kind = w?.condition.kind ?? "cloudy";
   const sky = raining ? "rain" : kind === "clear" ? "clear" : kind === "partly" ? "partly" : "cloudy";
   return { phase, sky, night: w ? !w.isDay : false, raining };
 }
@@ -513,12 +514,19 @@ async function refreshStatus(withForm = false) {
   }
 }
 
+let weatherRetry;
 async function refreshWeather() {
+  clearTimeout(weatherRetry);
   try {
     weather = await api("/weather");
     if (status) renderAll();
   } catch (e) {
-    if (!weather) $("wx-body").innerHTML = `<p class="muted">Weather is unavailable right now (${esc(e.message)}).</p>`;
+    if (!weather) {
+      $("wx-body").innerHTML = `<p class="muted">Weather is unavailable right now (${esc(e.message)}). Trying again shortly.</p><button class="btn btn-ghost" id="wx-retry" type="button">Retry now</button>`;
+      $("wx-retry").onclick = () => { $("wx-retry").disabled = true; refreshWeather(); };
+      if (status) renderAll(); // redraw the sky without weather data
+      weatherRetry = setTimeout(refreshWeather, 30000);
+    }
   }
 }
 

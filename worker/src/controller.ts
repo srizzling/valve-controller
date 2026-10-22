@@ -66,6 +66,11 @@ export class Controller extends DurableObject<Env> {
     return config;
   }
 
+  /** The forecast, kept in storage so a restarted Worker does not have to ask Open-Meteo again. */
+  weather(now = Date.now()): Promise<WeatherBundle> {
+    return getWeather(this.env, now, fetch, this.ctx.storage);
+  }
+
   async getStatus(): Promise<Status> {
     const history = (await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [];
     const config = await this.getConfig();
@@ -191,7 +196,7 @@ export class Controller extends DurableObject<Env> {
       let weather: WeatherBundle | undefined;
       let weatherProblem = "";
       try {
-        weather = await getWeather(this.env, now);
+        weather = await this.weather(now);
       } catch (e) {
         weatherProblem = message(e);
       }

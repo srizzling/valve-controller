@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig, nextRunAt } from "../src/plan";
-import { describeWeather, summarizeWeather } from "../src/weather";
+import { describeWeather, getWeather, summarizeWeather } from "../src/weather";
+import type { Env } from "../src/env";
 
 describe("nextRunAt", () => {
   const cfg = { ...defaultConfig, schedules: [{ days: [3, 4], time: "06:00" }] }; // Wed and Thu
@@ -94,5 +95,57 @@ describe("weather data for the smart watering", () => {
     expect(data.etTodayMm).toBeUndefined();
     expect(data.soilMoisture).toBeUndefined();
     expect(forecast.etByDate).toEqual({});
+  });
+});
+
+describe("getWeather", () => {
+  const env = { LATITUDE: "-37.81", LONGITUDE: "144.96", TIMEZONE: "Australia/Melbourne", WEATHER_BASE_URL: "https://retry.test" } as Env;
+  const times = Array.from({ length: 24 }, (_, h) => `2026-10-21T${String(h).padStart(2, "0")}:00`);
+  const raw = {
+    utc_offset_seconds: 39600,
+    current: { time: "2026-10-21T12:00", temperature_2m: 18, apparent_temperature: 16, relative_humidity_2m: 60, precipitation: 0, weather_code: 0, cloud_cover: 0, wind_speed_10m: 10, is_day: 1 },
+    hourly: { time: times, precipitation: times.map(() => 0), precipitation_probability: times.map(() => 0) },
+    daily: { time: ["2026-10-21"], weather_code: [0], temperature_2m_max: [22], temperature_2m_min: [11], precipitation_sum: [0], precipitation_probability_max: [0] },
+  };
+
+  it("retries once when the first request times out", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      if (++calls === 1) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      return new Response(JSON.stringify(raw));
+    }) as unknown as typeof fetch;
+    const { data } = await getWeather(env, Date.UTC(2026, 9, 21, 1, 0), fetchFn);
+    expect(calls).toBe(2);
+    expect(data.current.condition.kind).toBe("clear");
+  });
+
+  const ok = () => new Response(JSON.stringify(raw));
+  const memoryStore = () => {
+    const m = new Map<string, unknown>();
+    return { m, get: async (k: string) => m.get(k), put: async (k: string, v: unknown) => void m.set(k, v) };
+  };
+  const down = (async () => { throw new Error("down"); }) as unknown as typeof fetch;
+  const now = Date.UTC(2026, 9, 21, 1, 0);
+
+  it("is saved to the store and reused by a fresh Worker without calling Open-Meteo", async () => {
+    const store = memoryStore();
+    const e = { ...env, LATITUDE: "1" } as Env;
+    await getWeather(e, now, (async () => ok()) as unknown as typeof fetch, store);
+    expect(store.m.has("weather")).toBe(true);
+    // a restarted Worker has no memory cache, so poke it with another place and come back
+    await getWeather({ ...env, LATITUDE: "2" } as Env, now, (async () => ok()) as unknown as typeof fetch);
+    let calls = 0;
+    const counting = (async () => { calls++; return ok(); }) as unknown as typeof fetch;
+    const { data } = await getWeather(e, now + 20 * 60_000, counting, store);
+    expect(calls).toBe(0);
+    expect(data.stale).toBeUndefined();
+  });
+
+  it("serves stored data marked stale when Open-Meteo is down, but not once it is too old", async () => {
+    const store = memoryStore();
+    const e = { ...env, LATITUDE: "3" } as Env;
+    await getWeather(e, now, (async () => ok()) as unknown as typeof fetch, store);
+    expect((await getWeather(e, now + 2 * 3_600_000, down, store)).data.stale).toBe(true);
+    await expect(getWeather(e, now + 7 * 3_600_000, down, store)).rejects.toThrow("down");
   });
 });
