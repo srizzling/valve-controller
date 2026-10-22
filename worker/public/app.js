@@ -161,7 +161,8 @@ function renderScene() {
   svg.dataset.rain = raining ? "on" : "off";
   svg.dataset.wet = phase === "watering" || raining ? "on" : "off";
   const words = { clear: night ? "a clear night" : "a sunny sky", partly: "a partly cloudy sky", cloudy: "an overcast sky", rain: "falling rain" };
-  const what = phase === "watering" ? "being watered" : phase === "soaking" ? "while the water soaks in" : "standing happily";
+  const asleep = night && svg.dataset.wet === "off";
+  const what = phase === "watering" ? "being watered" : phase === "soaking" ? "while the water soaks in" : asleep ? "fast asleep" : "standing happily";
   svg.setAttribute("aria-label", `A cartoon sunflower ${what}, with ${words[sky]}`);
 }
 

@@ -56,10 +56,12 @@
             <path d="M-9 7 Q0 15 9 7" fill="none" stroke="#7a3d00" stroke-width="2.4" stroke-linecap="round"/>
             <circle cx="-16" cy="5" r="4" fill="#ff9a6b" opacity=".55"/><circle cx="16" cy="5" r="4" fill="#ff9a6b" opacity=".55"/>
           </g>
-          <g class="fade moon" transform="translate(80 112)">
-            <circle r="46" fill="#cfe0ff" opacity=".12"/>
-            <path d="M4 -26 A26 26 0 1 0 4 26 A20 20 0 1 1 4 -26Z" fill="#fff1bd" stroke="#f3d77a" stroke-width="2"/>
-            <circle cx="-8" cy="-2" r="2" fill="#7a6420"/><path d="M-12 9 Q-6 13 0 9" fill="none" stroke="#7a6420" stroke-width="2" stroke-linecap="round"/>
+          <g class="fade moon" transform="translate(320 112)">
+            <mask id="moonCut" maskUnits="userSpaceOnUse" x="-40" y="-40" width="80" height="80"><circle r="30" fill="#fff"/><circle cx="15" cy="-11" r="25" fill="#000"/></mask>
+            <circle r="30" fill="#ffe45e" mask="url(#moonCut)"/>
+            <path d="M-21 1 Q-17 -4 -12 1" fill="none" stroke="#7a6420" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="-14" cy="11" r="4" fill="#ff9a6b" opacity=".85"/>
+            <path d="M-8 14 Q-4 18 0 14" fill="none" stroke="#7a6420" stroke-width="2" stroke-linecap="round"/>
           </g>
 
           <!-- drifting clouds -->
@@ -135,9 +137,17 @@
                   <g class="eyes eyes-happy" fill="none" stroke="#25120a" stroke-width="2.6" stroke-linecap="round">
                     <path d="M186.5 102.5 Q191 95.5 195.5 102.5"/><path d="M204.5 102.5 Q209 95.5 213.5 102.5"/>
                   </g>
+                  <g class="eyes eyes-asleep" fill="none" stroke="#25120a" stroke-width="2.6" stroke-linecap="round">
+                    <path d="M186.5 100.5 Q191 106 195.5 100.5"/><path d="M204.5 100.5 Q209 106 213.5 100.5"/>
+                  </g>
                   <path d="M192 111 Q200 120 208 111" fill="none" stroke="#25120a" stroke-width="2.4" stroke-linecap="round"/>
                   <circle cx="185" cy="109" r="4.2" fill="#ff8fa3" opacity=".6"/><circle cx="215" cy="109" r="4.2" fill="#ff8fa3" opacity=".6"/>
                 </g>
+              </g>
+              <g class="zzz" font-family="Nunito, system-ui, sans-serif" font-weight="800" fill="#dfe6ff">
+                <text x="232" y="86" font-size="13">z</text>
+                <text class="z2" x="242" y="72" font-size="17">z</text>
+                <text class="z3" x="254" y="55" font-size="22">Z</text>
               </g>
             </g></g>
             </g>

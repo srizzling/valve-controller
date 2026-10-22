@@ -273,6 +273,17 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .scene[data-wet="on"] .eyes-happy { opacity: 1; }
 .scene[data-wet="on"] .eyes-open { opacity: 0; }
 .scene[data-wet="on"] .head { animation: perk 1.5s ease-in-out infinite; }
+
+/* asleep: only at night, and anything that wets the plant wakes it up */
+.eyes-asleep { opacity: 0; transition: opacity .3s; }
+.scene[data-night="on"][data-wet="off"] .eyes-asleep { opacity: 1; }
+.scene[data-night="on"][data-wet="off"] .eyes-open { opacity: 0; }
+.scene[data-night="on"][data-wet="off"] .head { transform: rotate(13deg); animation: snooze 5s ease-in-out infinite alternate; }
+.zzz { opacity: 0; }
+.scene[data-night="on"][data-wet="off"] .zzz { opacity: .85; }
+.zzz text { animation: zzz 4.2s ease-in-out infinite; }
+.zzz .z2 { animation-delay: 1.2s; }
+.zzz .z3 { animation-delay: 2.4s; }
 .scene[data-wet="on"] .leaf { animation: leafwet 1s ease-in-out infinite alternate; }
 
 /* bee */
@@ -323,6 +334,8 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 @keyframes nod { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
 @keyframes leaf { from { transform: rotate(-3deg); } to { transform: rotate(4deg); } }
 @keyframes leafwet { from { transform: rotate(-6deg); } to { transform: rotate(7deg); } }
+@keyframes snooze { from { transform: rotate(11deg); } to { transform: rotate(15deg); } }
+@keyframes zzz { 0% { opacity: 0; transform: translate(-4px, 6px); } 25%, 60% { opacity: 1; } 100% { opacity: 0; transform: translate(4px, -8px); } }
 @keyframes perk { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(2.5px) scale(1.04, .97); } 70% { transform: translateY(-2px) scale(.98, 1.03); } }
 @keyframes grow { from { transform: scale(.88, .7); } to { transform: scale(1); } }
 @keyframes blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.08); } }
