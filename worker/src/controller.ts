@@ -72,10 +72,9 @@ export class Controller extends DurableObject<Env> {
   }
 
   async getStatus(): Promise<Status> {
-    const history = (await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [];
-    const config = await this.getConfig();
+    const [history, config, state] = await Promise.all([this.ctx.storage.get<HistoryEntry[]>("history"), this.getConfig(), this.getState()]);
     const now = Date.now();
-    return { state: await this.getState(), config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, placeOf(this.env)), history };
+    return { state, config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, placeOf(this.env)), history: history ?? [] };
   }
 
   getValve(): Promise<ValveStatus> {

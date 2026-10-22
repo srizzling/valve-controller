@@ -148,4 +148,12 @@ describe("getWeather", () => {
     expect((await getWeather(e, now + 2 * 3_600_000, down, store)).data.stale).toBe(true);
     await expect(getWeather(e, now + 7 * 3_600_000, down, store)).rejects.toThrow("down");
   });
+
+  it("shares one request between callers that arrive together", async () => {
+    let calls = 0;
+    const fetchFn = (async () => { calls++; await new Promise((r) => setTimeout(r, 5)); return ok(); }) as unknown as typeof fetch;
+    const e = { ...env, LATITUDE: "4" } as Env;
+    await Promise.all([getWeather(e, now, fetchFn), getWeather(e, now, fetchFn), getWeather(e, now, fetchFn)]);
+    expect(calls).toBe(1);
+  });
 });

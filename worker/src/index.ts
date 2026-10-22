@@ -35,9 +35,12 @@ api.post("/start", async (c) => {
 api.post("/stop", async (c) => c.json(await controller(c.env).stop()));
 // Everything the weather panel needs, plus whether the next scheduled run would go ahead
 api.get("/weather", async (c) => {
-  const status = await controller(c.env).getStatus();
+  const stub = controller(c.env);
+  const weatherP = stub.weather();
+  weatherP.catch(() => undefined); // handled below; this keeps it from counting as unhandled while the status loads
+  const status = await stub.getStatus();
   try {
-    const { data, forecast } = await controller(c.env).weather();
+    const { data, forecast } = await weatherP;
     const now = Date.now();
     const daily = data.daily.map((d) => ({ ...d, runs: plannedRuns(status.config, d.date, forecast, status.history, now, placeOf(c.env)) }));
     const runs = daily.flatMap((d) => d.runs);
