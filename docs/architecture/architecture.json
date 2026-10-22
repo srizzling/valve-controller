@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "99fc4dafefa7e7b557f1656be0f711e05f70d899"
+      "revision": "26e1e2bfdc97ee56e87c35efa4683aee5bc91e4b"
     }
   },
   "components": [
@@ -102,14 +102,14 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 133,
-          "end_line": 178,
+          "line": 137,
+          "end_line": 182,
           "label": "alarm: cycle/soak"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 260,
-          "end_line": 306,
+          "line": 264,
+          "end_line": 310,
           "label": "supervise: one-hour limits"
         },
         {
@@ -255,9 +255,15 @@
         },
         {
           "path": "worker/src/weather.ts",
-          "line": 123,
-          "end_line": 123,
+          "line": 164,
+          "end_line": 164,
           "label": "fetch forecast, ET and soil moisture"
+        },
+        {
+          "path": "worker/src/weather.ts",
+          "line": 122,
+          "end_line": 123,
+          "label": "fresh 30 min, stale up to 6 h"
         }
       ]
     },
@@ -372,7 +378,7 @@
       "id": "controller-to-weather",
       "from": "controller",
       "to": "weather",
-      "label": "rain + smart check",
+      "label": "forecast (cached 30 min)",
       "variant": "dashed"
     },
     {
