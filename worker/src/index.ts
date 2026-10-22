@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { csrf } from "hono/csrf";
 import { checkAccess } from "./access";
 import { Controller } from "./controller";
 import type { Env } from "./env";
@@ -9,6 +10,7 @@ import type { RainVerdict } from "./rain";
 import { plannedRuns } from "./outlook";
 import type { PlannedRun } from "./outlook";
 import { placeOf } from "./place";
+import { securityHeaders } from "./security";
 import { getWeather } from "./weather";
 
 export { Controller };
@@ -16,6 +18,8 @@ export { Controller };
 const controller = (env: Env) => env.CONTROLLER.get(env.CONTROLLER.idFromName("main"));
 
 const api = new Hono<{ Bindings: Env }>();
+// The Access cookie is sent with any request from the browser, so refuse writes that another site triggered.
+api.use("*", csrf());
 api.use("*", async (c, next) => {
   const access = await checkAccess(c.req.raw, c.env);
   if (!access.ok) return c.json({ error: access.error }, access.status);
@@ -80,6 +84,7 @@ api.get("/valve", async (c) => {
 });
 
 const app = new Hono<{ Bindings: Env }>();
+app.use("*", securityHeaders);
 app.route("/api", api);
 app.route("/", googleRoutes(controller));
 

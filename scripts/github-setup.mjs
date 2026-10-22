@@ -5,7 +5,7 @@
 //   node scripts/github-setup.mjs secrets    copy infra/.env and infra/terraform.tfvars into Actions secrets and variables
 //   node scripts/github-setup.mjs all
 //
-//   --protect        also protect main (a PR and a passing ci-ok; needs GitHub Pro or a public repo)
+//   --no-protect     do not protect main (by default it needs a PR and a passing ci-ok; needs GitHub Pro or a public repo)
 //   --dry-run        say what would change, change nothing (never prints secret values)
 //   --env FILE       secrets file          (default infra/.env)
 //   --tfvars FILE    Terraform variables   (default infra/terraform.tfvars)
@@ -20,6 +20,9 @@ const flag = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) 
 const dryRun = argv.includes("--dry-run");
 const command = argv.find((a, i) => !a.startsWith("--") && !["--env", "--tfvars"].includes(argv[i - 1])) ?? "settings";
 const BRANCH = "main";
+const protect = !argv.includes("--no-protect");
+// Third-party actions the workflows may use, on top of GitHub's own. Each must be pinned to a commit (Renovate keeps the pins fresh).
+const ALLOWED_ACTIONS = ["hashicorp/setup-terraform@*", "googleapis/release-please-action@*"];
 const REQUIRED_CHECK = "ci-ok"; // the gate job in .github/workflows/ci.yml
 
 // Terraform secrets that CI needs, by the same names they have in infra/.env.
@@ -61,6 +64,22 @@ function api(method, path, body, label) {
   return { ok: r.status === 0, message: message(r) };
 }
 
+// Release tags (v1.2.3, made by Release Please) can be created but never moved or deleted.
+function releaseTagRuleset() {
+  console.log("\nRelease tags");
+  const body = {
+    name: "Protect release tags",
+    target: "tag",
+    enforcement: "active",
+    conditions: { ref_name: { include: ["refs/tags/v*"], exclude: [] } },
+    rules: [{ type: "deletion" }, { type: "update" }, { type: "non_fast_forward" }],
+    bypass_actors: [],
+  };
+  const list = gh(["api", `repos/${repo}/rulesets`]);
+  const existing = list.status === 0 ? JSON.parse(list.stdout).find((r) => r.name === body.name) : undefined;
+  api(existing ? "PUT" : "POST", existing ? `repos/${repo}/rulesets/${existing.id}` : `repos/${repo}/rulesets`, body, "v* tags cannot be moved or deleted");
+}
+
 function settings() {
   console.log("\nRepository settings");
   api("PATCH", `repos/${repo}`, {
@@ -78,14 +97,20 @@ function settings() {
   // Renovate opens the fix PRs (it reads these alerts), so Dependabot must not open a second one for the same advisory.
   api("DELETE", `repos/${repo}/automated-security-fixes`, undefined, "Dependabot security PRs off (Renovate raises them)");
   api("PATCH", `repos/${repo}`, { security_and_analysis: { secret_scanning: { status: "enabled" }, secret_scanning_push_protection: { status: "enabled" } } }, "secret scanning and push protection on");
+  api("PUT", `repos/${repo}/private-vulnerability-reporting`, undefined, "private vulnerability reporting on (see SECURITY.md)");
+  api("PATCH", `repos/${repo}/code-scanning/default-setup`, { state: "configured", query_suite: "default", languages: ["actions", "javascript-typescript", "python"] }, "CodeQL code scanning on (Worker, scripts and workflow files)");
 
   console.log("\nGitHub Actions");
   api("PUT", `repos/${repo}/actions/permissions/workflow`, { default_workflow_permissions: "read", can_approve_pull_request_reviews: false }, "workflows get a read-only token by default");
 
+  api("PUT", `repos/${repo}/actions/permissions`, { enabled: true, allowed_actions: "selected", sha_pinning_required: true }, "only allow-listed actions, each pinned to a full commit SHA");
+  api("PUT", `repos/${repo}/actions/permissions/selected-actions`, { github_owned_allowed: true, verified_allowed: false, patterns_allowed: ALLOWED_ACTIONS }, `allow-list: GitHub's own actions and ${ALLOWED_ACTIONS.join(", ")}`);
+
   // On a public repo, every workflow run from a first-time contributor's pull request waits for you to approve it.
   api("PUT", `repos/${repo}/actions/permissions/fork-pr-contributor-approval`, { approval_policy: "all_external_contributors" }, "pull requests from outside contributors need approval before workflows run");
 
-  if (!argv.includes("--protect")) return console.log(`\nBranch protection on ${BRANCH}: not requested (pass --protect to turn it on)`);
+  releaseTagRuleset();
+  if (!protect) return console.log(`\nBranch protection on ${BRANCH}: skipped (--no-protect). A push to ${BRANCH} deploys, so only do this on a repo nobody else can write to.`);
   console.log(`\nBranch protection on ${BRANCH}`);
   const r = api("PUT", `repos/${repo}/branches/${BRANCH}/protection`, {
     required_status_checks: { strict: true, contexts: [REQUIRED_CHECK] },
@@ -154,7 +179,7 @@ function secrets() {
 }
 
 if (!["settings", "secrets", "all"].includes(command)) {
-  console.error("usage: github-setup.mjs [settings|secrets|all] [--protect] [--dry-run] [--env FILE] [--tfvars FILE]");
+  console.error("usage: github-setup.mjs [settings|secrets|all] [--no-protect] [--dry-run] [--env FILE] [--tfvars FILE]");
   process.exit(2);
 }
 if (command === "settings" || command === "all") settings();

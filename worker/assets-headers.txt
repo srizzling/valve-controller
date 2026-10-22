@@ -1,0 +1,10 @@
+# Response headers for the UI's static files. Terraform uploads this as the Worker's `_headers` file (infra/worker.tf).
+# It is kept out of public/ so it is not also published as a file. Keep the CSP in step with the <meta> tag in public/index.html.
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000

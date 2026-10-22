@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "99fc4dafefa7e7b557f1656be0f711e05f70d899"
+      "revision": "2b3af1bc1864d6f15510d88ea234919c422941d6"
     }
   },
   "components": [
@@ -74,15 +74,21 @@
       "sources": [
         {
           "path": "worker/src/index.ts",
-          "line": 17,
-          "end_line": 22,
-          "label": "Access gate, routes"
+          "line": 20,
+          "end_line": 28,
+          "label": "CSRF check, Access gate, routes"
         },
         {
           "path": "worker/src/index.ts",
-          "line": 78,
-          "end_line": 78,
-          "label": "Google routes"
+          "line": 87,
+          "end_line": 89,
+          "label": "Security headers, Google routes"
+        },
+        {
+          "path": "worker/src/security.ts",
+          "line": 13,
+          "end_line": 23,
+          "label": "securityHeaders"
         }
       ]
     },
@@ -396,6 +402,7 @@
       "title": "Who can reach what",
       "items": [
         "The UI and /api sit behind Cloudflare Access, and the Worker re-checks the token",
+        "Writes to /api must come from the app's own origin, and every response carries a CSP and anti-framing headers",
         "Google Home bypasses Access on /oauth and /google, using its own signed tokens",
         "Only the Controller talks to Tuya, using a login it keeps in its own storage"
       ]
