@@ -101,7 +101,7 @@ function settings() {
   api("PATCH", `repos/${repo}/code-scanning/default-setup`, { state: "configured", query_suite: "default", languages: ["actions", "javascript-typescript", "python"] }, "CodeQL code scanning on (Worker, scripts and workflow files)");
 
   console.log("\nGitHub Actions");
-  api("PUT", `repos/${repo}/actions/permissions/workflow`, { default_workflow_permissions: "read", can_approve_pull_request_reviews: false }, "workflows get a read-only token by default");
+  api("PUT", `repos/${repo}/actions/permissions/workflow`, { default_workflow_permissions: "read", can_approve_pull_request_reviews: true }, "workflows get a read-only token by default; Release Please may open its pull request");
 
   api("PUT", `repos/${repo}/actions/permissions`, { enabled: true, allowed_actions: "selected", sha_pinning_required: true }, "only allow-listed actions, each pinned to a full commit SHA");
   api("PUT", `repos/${repo}/actions/permissions/selected-actions`, { github_owned_allowed: true, verified_allowed: false, patterns_allowed: ALLOWED_ACTIONS }, `allow-list: GitHub's own actions and ${ALLOWED_ACTIONS.join(", ")}`);

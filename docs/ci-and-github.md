@@ -39,8 +39,8 @@ would do). It sets:
   and GitHub records it. Set `enforce_admins` to `true` in the script to remove that escape hatch. `--no-protect` skips
   all of it. It needs a public repository or GitHub Pro.
 - `v*` release tags that can be created but not moved or deleted
-- workflow tokens that are read-only and cannot approve pull requests, and outside contributors' runs that wait for your
-  approval
+- workflow tokens that are read-only by default (Actions may open pull requests, for Release Please), and outside
+  contributors' runs that wait for your approval
 - an allow-list of actions (GitHub's own, `hashicorp/setup-terraform`, `googleapis/release-please-action`), every one
   pinned to a full commit SHA
 - Dependabot alerts, secret scanning with push protection, private vulnerability reporting (see `SECURITY.md`) and
@@ -68,15 +68,12 @@ After each merge it opens or updates one pull request, "chore(main): release x.y
 every merge to `main` is already deployed by the Terraform job, so a release is a labelled point in history. The first
 one is 0.1.0 and its notes cover the whole history. Settings are in `release-please-config.json`.
 
-**One-time setup.** A pull request opened by the built-in `GITHUB_TOKEN` does not start CI, so it could never pass the
-required `ci-ok` check. Release Please therefore uses a fine-grained personal access token:
-
-1. GitHub, Settings, Developer settings, Fine-grained tokens. Only this repository, permissions **Contents** and **Pull
-   requests**, both read and write. Pick the longest expiry you are comfortable with.
-2. `gh secret set RELEASE_PLEASE_TOKEN --repo srizzling/valve-controller`, paste the token.
-
-Until the secret exists the workflow prints a notice and does nothing. The token expires: when releases stop appearing,
-make a new one and set the secret again.
+**Merging the release pull request.** Release Please uses the built-in `GITHUB_TOKEN`, and a pull request opened with that
+token does not start CI, so the release pull request can never pass the required `ci-ok` check. Merge it as an admin,
+using the branch protection bypass (`enforce_admins` is off). The merge only adds `CHANGELOG.md`, `version.txt` and a
+tag, so there is nothing for CI to check. This needs the repository setting that lets Actions create pull requests,
+which `scripts/github-setup.mjs` turns on. If you want CI to run on the release pull request, give Release Please a
+GitHub App token instead.
 
 ## How the Worker is locked down
 
