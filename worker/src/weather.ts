@@ -117,11 +117,34 @@ export function summarizeWeather(raw: OpenMeteo, now: number): WeatherBundle {
   };
 }
 
-const TTL_MS = 5 * 60_000;
-let cache: { key: string; at: number; bundle: WeatherBundle } | null = null;
+// The forecast does not need to be exact, so a copy up to half an hour old is used as is. If Open-Meteo is down,
+// a copy up to 6 hours old is shown (marked stale) rather than nothing.
+const TTL_MS = 30 * 60_000;
+const MAX_STALE_MS = 6 * HOUR;
+const STORE_KEY = "weather";
 
-export async function getWeather(env: Env, now = Date.now(), fetchFn: typeof fetch = fetch): Promise<WeatherBundle> {
+/** Where the last good answer is kept between Worker restarts: the Durable Object's storage. */
+export interface WeatherStore { get(key: string): Promise<unknown>; put(key: string, value: unknown): Promise<void> }
+interface Cached { key: string; at: number; bundle: WeatherBundle }
+let cache: Cached | null = null;
+
+let inflight: { key: string; promise: Promise<WeatherBundle> } | null = null;
+
+export async function getWeather(env: Env, now = Date.now(), fetchFn: typeof fetch = fetch, store?: WeatherStore): Promise<WeatherBundle> {
   const key = `${env.LATITUDE},${env.LONGITUDE},${env.TIMEZONE}`;
+  // requests that arrive while one is already asking Open-Meteo share its answer
+  if (inflight?.key === key) return inflight.promise;
+  const promise = load(env, key, now, fetchFn, store);
+  inflight = { key, promise };
+  try {
+    return await promise;
+  } finally {
+    if (inflight?.promise === promise) inflight = null;
+  }
+}
+
+async function load(env: Env, key: string, now: number, fetchFn: typeof fetch, store?: WeatherStore): Promise<WeatherBundle> {
+  if (!cache || cache.key !== key) cache = ((await store?.get(STORE_KEY).catch(() => undefined)) as Cached | undefined) ?? null;
   if (cache && cache.key === key && now - cache.at < TTL_MS) return cache.bundle;
   const url = new URL(`${env.WEATHER_BASE_URL ?? "https://api.open-meteo.com"}/v1/forecast`); // the override is for tests
   url.searchParams.set("latitude", env.LATITUDE);
@@ -134,13 +157,23 @@ export async function getWeather(env: Env, now = Date.now(), fetchFn: typeof fet
   url.searchParams.set("hourly", "precipitation,precipitation_probability,temperature_2m,wind_speed_10m,soil_moisture_0_to_7cm,soil_moisture_7_to_28cm");
   url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration");
   try {
-    const res = await fetchFn(url, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) throw new Error(`open-meteo returned ${res.status}`);
-    const bundle = summarizeWeather((await res.json()) as OpenMeteo, now);
+    // A cold isolate has no cache to fall back on, so one slow answer from Open-Meteo is retried once.
+    let raw: OpenMeteo | undefined;
+    for (let attempt = 1; !raw; attempt++) {
+      try {
+        const res = await fetchFn(url, { signal: AbortSignal.timeout(8_000) });
+        if (!res.ok) throw new Error(`open-meteo returned ${res.status}`);
+        raw = (await res.json()) as OpenMeteo;
+      } catch (e) {
+        if (attempt >= 2) throw e;
+      }
+    }
+    const bundle = summarizeWeather(raw, now);
     cache = { key, at: now, bundle };
+    await store?.put(STORE_KEY, cache).catch(() => undefined);
     return bundle;
   } catch (e) {
-    if (cache && cache.key === key) return { ...cache.bundle, data: { ...cache.bundle.data, stale: true } };
+    if (cache && cache.key === key && now - cache.at < MAX_STALE_MS) return { ...cache.bundle, data: { ...cache.bundle.data, stale: true } };
     throw e;
   }
 }

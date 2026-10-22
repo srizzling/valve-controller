@@ -144,9 +144,10 @@ function demoData(name) {
 function sceneState() {
   const phase = status?.state.phase ?? "idle";
   const w = weather?.current;
-  const kind = w?.condition.kind ?? "clear";
   const raining = !!w?.isRaining;
-  // the sky follows the real weather; a rain *forecast* alone never makes it rain
+  // the sky follows the real weather; a rain *forecast* alone never makes it rain.
+  // Without weather data the sky stays overcast rather than claiming sun.
+  const kind = w?.condition.kind ?? "cloudy";
   const sky = raining ? "rain" : kind === "clear" ? "clear" : kind === "partly" ? "partly" : "cloudy";
   return { phase, sky, night: w ? !w.isDay : false, raining };
 }
@@ -502,25 +503,36 @@ function setConn(ok, text) {
   c.textContent = text;
 }
 
+let statusKey = "";
 async function refreshStatus(withForm = false) {
   try {
     status = await api("/status");
     skew = status.now - Date.now();
     setConn(true, "Live");
     if (withForm) fillForm(status.config);
-    renderAll();
+    // Most polls return what we already drew (the clock aside), so only redraw when something changed.
+    const key = JSON.stringify({ ...status, now: 0 });
+    if (withForm || key !== statusKey) renderAll();
+    statusKey = key;
   } catch (e) {
     setConn(false, "Offline");
     if (!status) toast(e.message, true);
   }
 }
 
+let weatherRetry;
 async function refreshWeather() {
+  clearTimeout(weatherRetry);
   try {
     weather = await api("/weather");
     if (status) renderAll();
   } catch (e) {
-    if (!weather) $("wx-body").innerHTML = `<p class="muted">Weather is unavailable right now (${esc(e.message)}).</p>`;
+    if (!weather) {
+      $("wx-body").innerHTML = `<p class="muted">Weather is unavailable right now (${esc(e.message)}). Trying again shortly.</p><button class="btn btn-ghost" id="wx-retry" type="button">Retry now</button>`;
+      $("wx-retry").onclick = () => { $("wx-retry").disabled = true; refreshWeather(); };
+      if (status) renderAll(); // redraw the sky without weather data
+      weatherRetry = setTimeout(refreshWeather, 30000);
+    }
   }
 }
 
@@ -611,7 +623,13 @@ if (demo) {
   refreshWeather();
   refreshValve();
   setInterval(() => !document.hidden && refreshValve(), 5 * 60000);
-  setInterval(() => !document.hidden && refreshStatus(), 4000);
+  // quick while a run is on, relaxed when idle
+  (function pollStatus() {
+    setTimeout(() => {
+      if (!document.hidden) refreshStatus();
+      pollStatus();
+    }, status?.state.phase === "idle" ? 15000 : 4000);
+  })();
   setInterval(() => !document.hidden && refreshWeather(), 5 * 60000);
   setInterval(renderTicking, 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshStatus(); refreshWeather(); refreshValve(); } });
