@@ -501,13 +501,17 @@ function setConn(ok, text) {
   c.textContent = text;
 }
 
+let statusKey = "";
 async function refreshStatus(withForm = false) {
   try {
     status = await api("/status");
     skew = status.now - Date.now();
     setConn(true, "Live");
     if (withForm) fillForm(status.config);
-    renderAll();
+    // Most polls return what we already drew (the clock aside), so only redraw when something changed.
+    const key = JSON.stringify({ ...status, now: 0 });
+    if (withForm || key !== statusKey) renderAll();
+    statusKey = key;
   } catch (e) {
     setConn(false, "Offline");
     if (!status) toast(e.message, true);
@@ -617,7 +621,13 @@ if (demo) {
   refreshWeather();
   refreshValve();
   setInterval(() => !document.hidden && refreshValve(), 5 * 60000);
-  setInterval(() => !document.hidden && refreshStatus(), 4000);
+  // quick while a run is on, relaxed when idle
+  (function pollStatus() {
+    setTimeout(() => {
+      if (!document.hidden) refreshStatus();
+      pollStatus();
+    }, status?.state.phase === "idle" ? 15000 : 4000);
+  })();
   setInterval(() => !document.hidden && refreshWeather(), 5 * 60000);
   setInterval(renderTicking, 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { refreshStatus(); refreshWeather(); refreshValve(); } });
