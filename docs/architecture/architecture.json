@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "aade5196653e9800a7ef33b2846b3ca043f83cb8"
+      "revision": "5e65ab0a7b6908f6398eb3bd45daaab611268aef"
     }
   },
   "components": [
@@ -74,14 +74,14 @@
       "sources": [
         {
           "path": "worker/src/index.ts",
-          "line": 20,
-          "end_line": 28,
+          "line": 22,
+          "end_line": 30,
           "label": "CSRF check, Access gate, routes"
         },
         {
           "path": "worker/src/index.ts",
-          "line": 87,
-          "end_line": 89,
+          "line": 106,
+          "end_line": 108,
           "label": "Security headers, Google routes"
         },
         {
@@ -108,14 +108,14 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 137,
-          "end_line": 182,
+          "line": 150,
+          "end_line": 195,
           "label": "alarm: cycle/soak"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 264,
-          "end_line": 310,
+          "line": 277,
+          "end_line": 323,
           "label": "supervise: one-hour limits"
         },
         {
@@ -142,21 +142,21 @@
       "sources": [
         {
           "path": "worker/src/tuya.ts",
-          "line": 143,
-          "end_line": 150,
+          "line": 172,
+          "end_line": 179,
           "label": "signed client"
         },
         {
           "path": "worker/src/tuya.ts",
-          "line": 166,
-          "end_line": 178,
+          "line": 195,
+          "end_line": 207,
           "label": "token refresh"
         },
         {
           "path": "worker/src/tuya.ts",
-          "line": 218,
-          "end_line": 220,
-          "label": "sendCommands"
+          "line": 63,
+          "end_line": 79,
+          "label": "QR re-login"
         }
       ],
       "tag": "borrowed login"
@@ -177,14 +177,14 @@
       "sources": [
         {
           "path": "worker/src/valve.ts",
-          "line": 65,
-          "end_line": 71,
+          "line": 99,
+          "end_line": 105,
           "label": "open + countdown"
         },
         {
           "path": "worker/src/valve.ts",
-          "line": 78,
-          "end_line": 86,
+          "line": 112,
+          "end_line": 120,
           "label": "confirm state"
         }
       ]
@@ -211,8 +211,8 @@
         },
         {
           "path": "worker/src/index.ts",
-          "line": 82,
-          "end_line": 84,
+          "line": 114,
+          "end_line": 116,
           "label": "scheduled -> tick"
         }
       ]
@@ -410,7 +410,7 @@
         "The UI and /api sit behind Cloudflare Access, and the Worker re-checks the token",
         "Writes to /api must come from the app's own origin, and every response carries a CSP and anti-framing headers",
         "Google Home bypasses Access on /oauth and /google, using its own signed tokens",
-        "Only the Controller talks to Tuya, using a login it keeps in its own storage"
+        "Only the Controller talks to Tuya, using a login it keeps in its own storage. When Tuya stops accepting it, the UI shows a QR code and the Controller takes a new login from the scan"
       ]
     },
     {
