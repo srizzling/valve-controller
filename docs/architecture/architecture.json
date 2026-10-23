@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "9050e99d6579f591612d5edee1879ed19e49ef8e"
+      "revision": "7c382e5fe64b183cac99c9dbc0300820313c4a3b"
     }
   },
   "components": [
@@ -108,14 +108,14 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 150,
-          "end_line": 195,
+          "line": 159,
+          "end_line": 204,
           "label": "alarm: cycle/soak"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 277,
-          "end_line": 323,
+          "line": 286,
+          "end_line": 332,
           "label": "supervise: one-hour limits"
         },
         {
@@ -142,20 +142,20 @@
       "sources": [
         {
           "path": "worker/src/tuya.ts",
-          "line": 174,
-          "end_line": 181,
+          "line": 176,
+          "end_line": 183,
           "label": "signed client"
         },
         {
           "path": "worker/src/tuya.ts",
-          "line": 197,
-          "end_line": 218,
+          "line": 217,
+          "end_line": 238,
           "label": "token refresh"
         },
         {
           "path": "worker/src/tuya.ts",
-          "line": 63,
-          "end_line": 79,
+          "line": 65,
+          "end_line": 81,
           "label": "QR re-login"
         }
       ],
@@ -177,14 +177,14 @@
       "sources": [
         {
           "path": "worker/src/valve.ts",
-          "line": 108,
-          "end_line": 114,
+          "line": 206,
+          "end_line": 212,
           "label": "open + countdown"
         },
         {
           "path": "worker/src/valve.ts",
-          "line": 121,
-          "end_line": 129,
+          "line": 219,
+          "end_line": 227,
           "label": "confirm state"
         }
       ]
@@ -410,7 +410,7 @@
         "The UI and /api sit behind Cloudflare Access, and the Worker re-checks the token",
         "Writes to /api must come from the app's own origin, and every response carries a CSP and anti-framing headers",
         "Google Home bypasses Access on /oauth and /google, using its own signed tokens",
-        "Only the Controller talks to Tuya, using a login it keeps in its own storage. When Tuya stops accepting it, the UI shows a QR code and the Controller takes a new login from the scan"
+        "Only the Controller talks to Tuya, using up to two logins it keeps in its own storage and falling back to the second if Tuya refuses the first. When Tuya stops accepting it, the UI shows a QR code and the Controller takes a new login from the scan"
       ]
     },
     {
