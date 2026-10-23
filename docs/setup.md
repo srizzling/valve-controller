@@ -83,5 +83,8 @@ working) and rewrites `backend.hcl`. There is no state locking, so run one `appl
 Terraform is the source of truth for the Worker's variables and secrets. `worker/wrangler.jsonc` is only used for
 `wrangler dev` and for building the bundle, so do not `wrangler deploy`: it would replace what Terraform set.
 
-The Tuya login in state is only the seed. The Worker keeps the live, rotating copy in its own storage and ignores the
-seed unless you log in again (a later login replaces it), so applying Terraform never resets a working login.
+The Tuya login in state is only a first-time seed. The Worker keeps the live, rotating copy in its own storage and ignores the
+seed unless it is newer, so applying Terraform never resets a working login. Once the Worker has signed in you can
+**clear `TF_VAR_tuya_session`** in `infra/.env` and delete the `TF_VAR_tuya_session` GitHub secret, so the login (which
+can control every device on your Tuya account) is no longer copied into Terraform state, CI or your laptop. Keep
+`tuya_user_code` in `terraform.tfvars` (it is not a secret): it lets the UI's QR reconnect work even with no login saved.

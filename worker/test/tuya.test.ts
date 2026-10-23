@@ -81,6 +81,15 @@ describe("TuyaClient", () => {
     expect(st.log.filter((l) => l.includes("/token/"))).toHaveLength(1);
   });
 
+  it("adopts a newer saved session instead of giving up when its own refresh token was already rotated", async () => {
+    const st = newState({ refresh: "ref2", access: "tok2" });
+    const newer = baseSession({ refreshToken: "ref2", accessToken: "tok2", expireAt: st.now + 3_600_000, loginAt: 1 });
+    const stale = baseSession({ expireAt: st.now - 1 });
+    const c = new TuyaClient(stale, { fetch: fakeServer(st), now: () => st.now, reload: () => newer });
+    await c.sendCommands("d", []);
+    expect(c.getSession().refreshToken).toBe("ref2");
+  });
+
   it("raises an auth error when Tuya refuses the refresh, but not on a network failure", async () => {
     const refused = newState({ failRefresh: "1010" });
     await expect(new TuyaClient(baseSession({ expireAt: 0 }), { fetch: fakeServer(refused), now: () => refused.now }).sendCommands("d", [])).rejects.toBeInstanceOf(TuyaAuthError);
@@ -90,10 +99,18 @@ describe("TuyaClient", () => {
     expect(err).toBeInstanceOf(TypeError);
   });
 
-  it("surfaces API errors with their code", async () => {
+  it("refreshes and retries once when Tuya drops the access token early", async () => {
     const st = newState({ access: "different" }); // the server no longer accepts the client's token
+    const c = new TuyaClient(baseSession(), { fetch: fakeServer(st), now: () => st.now });
+    await c.sendCommands("d", []);
+    expect(st.log).toEqual(["POST /v1.1/m/thing/d/commands", "GET /v1.0/m/token/ref", "POST /v1.1/m/thing/d/commands"]); // refused, refreshed, sent again
+    expect(c.getSession().refreshToken).toBe("ref+");
+  });
+
+  it("calls the login dead when the early drop cannot be refreshed", async () => {
+    const st = newState({ access: "different", failRefresh: "1010" });
     const err = await new TuyaClient(baseSession(), { fetch: fakeServer(st), now: () => st.now }).sendCommands("d", []).catch((e: unknown) => e as TuyaError);
-    expect(err).toBeInstanceOf(TuyaError);
+    expect(err).toBeInstanceOf(TuyaAuthError);
     expect((err as TuyaError).code).toBe("1010");
   });
 

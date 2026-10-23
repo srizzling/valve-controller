@@ -94,7 +94,7 @@ class Run(unittest.TestCase):
         self.assertEqual(session["refresh_token"], REFRESH)
         self.assertIn("CLOUDFLARE_API_TOKEN=abc", self.env.read_text())
         text = self.tf.read_text()
-        for expected in ['tuya_device_id', 'valveid', 'tuya_switch_code', 'switch_1', 'tuya_countdown_code', 'countdown_1', 'zone_name = "venkatesh.cloud"']:
+        for expected in ['tuya_user_code', 'tuya_device_id', 'valveid', 'tuya_switch_code', 'switch_1', 'tuya_countdown_code', 'countdown_1', 'zone_name = "venkatesh.cloud"']:
             self.assertIn(expected, text)
         self.assertNotIn(REFRESH, out)
         self.assertNotIn("ACCESSTOKEN", out)

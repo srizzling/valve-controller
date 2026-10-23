@@ -17,7 +17,9 @@ export interface TuyaSession {
   accessToken: string;
   refreshToken: string;
   expireAt: number; // epoch ms
-  loginAt: number; // epoch ms of the QR login: a newer seed replaces an older saved session
+  loginAt: number; // epoch ms of the QR login: a newer seed replaces an older saved session, and it names the login
+  deadAt?: number; // set once Tuya has refused to refresh it: the Worker stops using it and keeps it only as a record
+  deadReason?: string;
 }
 
 export class TuyaError extends Error {
@@ -26,7 +28,7 @@ export class TuyaError extends Error {
   }
 }
 
-/** The login can no longer be refreshed: someone has to run scripts/tuya-login.py again. */
+/** The login can no longer be refreshed: someone has to scan a new QR code, in the UI or with scripts/tuya-login.py. */
 export class TuyaAuthError extends TuyaError {}
 
 /** The JSON that scripts/tuya-login.py writes (Tuya's own field names). */
@@ -46,6 +48,35 @@ export function sessionFromSeed(json: string): TuyaSession {
     expireAt: Number(s.t) + Number(s.expire_time) * 1000,
     loginAt: Number(s.t),
   };
+}
+
+// ───────────── QR login ─────────────
+// The same two unsigned calls that scripts/tuya-login.py makes through Tuya's SDK: ask for a QR token, then poll until
+// someone scans it in the Smart Life app. Lets the Worker take a new login without the script or a deploy.
+
+const LOGIN_HOST = "https://apigw.iotbing.com";
+const LOGIN_SCHEMA = "haauthorize";
+/** Home Assistant's registered client id, the only one Tuya's QR login accepts for third-party tools. */
+export const HA_CLIENT_ID = "HA_3y9q4ak7g4ephrvke";
+
+/** What the Smart Life app's scanner reads from the QR code. */
+export const qrPayload = (token: string) => `tuyaSmart--qrLogin?token=${token}`;
+
+export async function startQrLogin(userCode: string, doFetch: typeof fetch = fetch): Promise<string> {
+  const url = `${LOGIN_HOST}/v1.0/m/life/home-assistant/qrcode/tokens?clientid=${HA_CLIENT_ID}&usercode=${encodeURIComponent(userCode)}&schema=${LOGIN_SCHEMA}`;
+  const res = await doFetch(url, { method: "POST", signal: AbortSignal.timeout(20_000) });
+  const env = (await res.json()) as { success?: boolean; msg?: string; code?: string | number; result?: { qrcode?: string } };
+  if (!env.success || !env.result?.qrcode) throw new TuyaError(`Tuya refused the login request: ${env.msg ?? env.code ?? `HTTP ${res.status}`}`, String(env.code ?? ""));
+  return env.result.qrcode;
+}
+
+/** The new login once the QR code has been scanned, or null while it is still waiting. */
+export async function checkQrLogin(token: string, userCode: string, doFetch: typeof fetch = fetch): Promise<TuyaSession | null> {
+  const url = `${LOGIN_HOST}/v1.0/m/life/home-assistant/qrcode/tokens/${encodeURIComponent(token)}?clientid=${HA_CLIENT_ID}&usercode=${encodeURIComponent(userCode)}`;
+  const res = await doFetch(url, { signal: AbortSignal.timeout(20_000) });
+  const env = (await res.json()) as { success?: boolean; t?: number; result?: Record<string, string | number> };
+  if (!env.success || !env.result) return null;
+  return sessionFromSeed(JSON.stringify({ client_id: HA_CLIENT_ID, user_code: userCode, ...env.result, t: env.t }));
 }
 
 // ───────────── crypto ─────────────
@@ -129,6 +160,8 @@ export interface TuyaOptions {
   now?: () => number;
   /** Called with the new session whenever the tokens rotate. Save it before anything else uses the old one. */
   onSession?: (s: TuyaSession) => Promise<void> | void;
+  /** The saved session. If Tuya refuses our refresh token, something else may already have rotated it. */
+  reload?: () => Promise<TuyaSession | undefined> | TuyaSession | undefined;
   uuid?: () => string;
 }
 
@@ -153,27 +186,54 @@ export class TuyaClient {
 
   async request<T = unknown>(method: "GET" | "POST", path: string, params?: Record<string, unknown>, body?: Record<string, unknown>): Promise<T> {
     await this.ensureFresh();
-    return this.send<T>(method, path, params, body);
+    try {
+      return await this.send<T>(method, path, params, body);
+    } catch (e) {
+      // 1010: Tuya no longer honours the access token although we thought it good. Refreshing settles whether the
+      // login is still alive (and throws TuyaAuthError if not). The request was refused, so sending it again is safe.
+      if (!(e instanceof TuyaError && e.code === "1010")) throw e;
+      await this.refreshNow();
+      return this.send<T>(method, path, params, body);
+    }
   }
 
-  private async ensureFresh(): Promise<void> {
+  /** Refreshes the access token if it is about to run out. Lets a login that is not in use stay alive. */
+  async refreshIfNeeded(): Promise<void> {
     if (this.session.expireAt - 60_000 > this.now()) return;
+    await this.refreshNow();
+  }
+
+  /** Refreshes now, even if the token is fresh: the quickest way to learn whether Tuya still honours this login. */
+  async refreshNow(): Promise<void> {
     // One refresh at a time: the old refresh token stops working as soon as the new one is issued.
     this.refreshing ??= this.refresh().finally(() => (this.refreshing = undefined));
     await this.refreshing;
   }
 
+  private ensureFresh(): Promise<void> {
+    return this.refreshIfNeeded();
+  }
+
   private async refresh(): Promise<void> {
-    let env: Envelope;
-    try {
-      env = await this.sendRaw("GET", `/v1.0/m/token/${this.session.refreshToken}`);
-    } catch (e) {
-      if (e instanceof TuyaError && e.code) throw new TuyaAuthError(`Tuya refused to refresh the login (${e.code}: ${e.message}). Run scripts/tuya-login.py again.`, e.code);
-      throw e; // a network problem is not a reason to give up on the login
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const env = await this.sendRaw("GET", `/v1.0/m/token/${this.session.refreshToken}`);
+        const r = env.result as { expireTime: number; uid: string; accessToken: string; refreshToken: string };
+        this.session = { ...this.session, accessToken: r.accessToken, refreshToken: r.refreshToken, uid: r.uid, expireAt: (env.t ?? this.now()) + r.expireTime * 1000 };
+        await this.opts.onSession?.(this.session);
+        return;
+      } catch (e) {
+        if (!(e instanceof TuyaError && e.code)) throw e; // a network problem is not a reason to give up on the login
+        // Before declaring the login dead, check whether a newer one was saved since this client loaded its own.
+        const saved = attempt === 0 ? await this.opts.reload?.() : undefined;
+        if (saved && saved.loginAt >= this.session.loginAt && saved.refreshToken !== this.session.refreshToken) {
+          this.session = saved;
+          if (saved.expireAt - 60_000 > this.now()) return;
+          continue;
+        }
+        throw new TuyaAuthError(`Tuya refused to refresh the login (${e.code}: ${e.message}). Reconnect it from the UI (the 🔑 chip), or run scripts/tuya-login.py again.`, e.code);
+      }
     }
-    const r = env.result as { expireTime: number; uid: string; accessToken: string; refreshToken: string };
-    this.session = { ...this.session, accessToken: r.accessToken, refreshToken: r.refreshToken, uid: r.uid, expireAt: (env.t ?? this.now()) + r.expireTime * 1000 };
-    await this.opts.onSession?.(this.session);
   }
 
   private async send<T>(method: "GET" | "POST", path: string, params?: Record<string, unknown>, body?: Record<string, unknown>): Promise<T> {

@@ -15,6 +15,7 @@ healthchecks_channel_kinds = ["email"]
 # google_project_id = "my-valve-project"
 
 # Written by scripts/tuya-login.py
+tuya_user_code      = ""
 tuya_device_id      = ""
 tuya_switch_code    = "switch_1"
 tuya_countdown_code = "countdown_1"

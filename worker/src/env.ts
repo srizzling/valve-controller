@@ -20,7 +20,8 @@ export interface Env {
   DEV_BYPASS_ACCESS?: string; // "true" in .dev.vars only
   // Password typed on the Google account-linking page
   LINK_PASSWORD: string;
-  TUYA_SESSION: string; // the login from scripts/tuya-login.py; the live, rotating copy is kept in the Durable Object
+  TUYA_SESSION?: string; // optional first login from scripts/tuya-login.py; the live, rotating copy is kept in the Durable Object
+  TUYA_USER_CODE?: string; // the Smart Life User Code, so a QR reconnect works with no saved login at all
   SIGNING_KEY: string;
   GOOGLE_PROJECT_ID?: string;
   GOOGLE_CLIENT_ID?: string;

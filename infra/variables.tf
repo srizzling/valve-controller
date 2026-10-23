@@ -102,7 +102,13 @@ variable "tuya_session" {
   type        = string
   default     = ""
   sensitive   = true
-  description = "The Tuya login written by scripts/tuya-login.py (TF_VAR_tuya_session in infra/.env). Without it the Worker cannot reach the valve."
+  description = "Optional first login, written by scripts/tuya-login.py (TF_VAR_tuya_session in infra/.env). The Worker keeps the live, rotating login in its own storage, so leave this empty once it has signed in; a login can also be made from the UI, with the QR code."
+}
+
+variable "tuya_user_code" {
+  type        = string
+  default     = ""
+  description = "Your Smart Life User Code (app: Me > settings > Account and Security > User Code). Not a secret. It lets the UI's QR reconnect work when the Worker has no login saved."
 }
 
 variable "tuya_device_id" {

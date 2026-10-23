@@ -13,7 +13,7 @@ import { TuyaAuthError } from "./tuya";
 import { getWeather } from "./weather";
 import type { WeatherBundle } from "./weather";
 import { Valve } from "./valve";
-import type { ValveStatus } from "./valve";
+import type { Reconnect, ValveStatus } from "./valve";
 
 export interface HistoryEntry {
   at: number;
@@ -42,7 +42,15 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export class Controller extends DurableObject<Env> {
   private queue: Promise<unknown> = Promise.resolve();
-  private valve = new Valve(this.ctx.storage, this.env);
+  private valve = new Valve(this.ctx.storage, this.env, {
+    onLoginDead: ({ remaining, reason }) =>
+      notify(
+        this.env,
+        remaining > 0
+          ? { title: "Valve: a Tuya login stopped working", message: `${reason} The valve is still running on the other login. Add a backup from the UI (the 🔑 chip) before it goes too.`, tags: ["warning"], priority: 4 }
+          : { title: "Valve: Tuya login expired", message: `${reason} No working login is left, so runs will fail until you reconnect from the UI (the 🔑 chip).`, tags: ["rotating_light"], priority: 5 },
+      ),
+  });
 
   // Storage is consistent, but awaiting a network call lets other requests interleave.
   // Run every state-changing operation one at a time.
@@ -77,8 +85,21 @@ export class Controller extends DurableObject<Env> {
     return { state, config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, placeOf(this.env)), history: history ?? [] };
   }
 
-  getValve(): Promise<ValveStatus> {
-    return this.valve.status();
+  /** Errors do not keep their class across a Durable Object call, so say here whether the login is the problem. */
+  async getValve(): Promise<ValveStatus | { error: string; loginExpired: boolean }> {
+    try {
+      return await this.valve.status();
+    } catch (e) {
+      return { error: message(e), loginExpired: e instanceof TuyaAuthError };
+    }
+  }
+
+  reconnectStart(): Promise<Reconnect> {
+    return this.serial(() => this.valve.reconnectStart());
+  }
+
+  reconnectCheck(): Promise<Reconnect> {
+    return this.serial(() => this.valve.reconnectCheck());
   }
 
   start(trigger: Trigger): Promise<{ ok: boolean; message: string }> {
@@ -113,6 +134,7 @@ export class Controller extends DurableObject<Env> {
   /** Called every minute by the cron trigger. */
   tick(): Promise<void> {
     return this.serial(async () => {
+      await this.valve.keepWarm().catch(() => undefined); // keeps the spare login alive; a failure shows up in the checks below
       await this.supervise();
       const state = await this.getState();
       const now = Date.now();

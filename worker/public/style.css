@@ -382,3 +382,11 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .sched .only em:first-child { flex: none; }
 .sched .only em:last-child { margin-left: auto; }
 .sched .lead input { padding-left: 12px; }
+
+button.chip { font: inherit; font-weight: 600; cursor: default; }
+button.chip.action { cursor: pointer; }
+.reconnect { max-width: 340px; padding: 18px; color: inherit; }
+.reconnect::backdrop { background: #000a; }
+.reconnect-qr { width: 240px; max-width: 100%; margin: 12px auto; border-radius: 8px; overflow: hidden; }
+.reconnect-qr svg { display: block; width: 100%; height: auto; }
+.reconnect .row { display: flex; gap: 8px; justify-content: flex-end; }

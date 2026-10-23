@@ -9,8 +9,8 @@ Put it in infra/.env as TUYA_USER_CODE, or pass --user-code.
 What it does:
   1. shows a QR code, waits for you to scan it with the app,
   2. finds the valve (category "sfkzq", or the device you name with --device) and prints what it can do,
-  3. saves the login to infra/.env as TF_VAR_tuya_session, and the valve's id and data point codes to
-     infra/terraform.tfvars, for Terraform to give to the Worker.
+  3. saves the login to infra/.env as TF_VAR_tuya_session, and the User Code, the valve's id and its data point
+     codes to infra/terraform.tfvars, for Terraform to give to the Worker.
 
 The login is NOT signed out afterwards: the Worker keeps using it, refreshing it as it goes. It can control every
 Tuya device on your account until you revoke it (Smart Life app: Me > settings > Account and Security, or run this
@@ -153,6 +153,7 @@ def run(args, say=print) -> int:
         say("[dry run] nothing saved. The login was not kept.")
         return 0
     upsert(ENV, "TF_VAR_tuya_session", seed_json(info, user_code), quote=False)
+    upsert(TFVARS, "tuya_user_code", user_code, quote=True)
     upsert(TFVARS, "tuya_device_id", valve.id, quote=True)
     upsert(TFVARS, "tuya_switch_code", switch, quote=True)
     upsert(TFVARS, "tuya_countdown_code", countdown, quote=True)
