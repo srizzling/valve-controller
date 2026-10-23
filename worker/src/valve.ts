@@ -27,7 +27,7 @@ export interface ValveOptions {
 
 /** The garden valve, reached through Tuya's cloud. */
 export class Valve {
-  private client?: TuyaClient;
+  private client?: Promise<TuyaClient>;
 
   constructor(private storage: DurableObjectStorage, private env: Env, private opts: ValveOptions = {}) {}
 
@@ -39,20 +39,28 @@ export class Valve {
     return this.env.TUYA_COUNTDOWN_CODE ?? "countdown_1"; // set it to an empty string for a valve without one
   }
 
-  private async tuya(): Promise<TuyaClient> {
-    if (this.client) return this.client;
+  // One client per Worker instance. It is the promise that is kept, so two requests that arrive together on a cold
+  // start share one client instead of each refreshing the same token (Tuya treats a reused refresh token as theft).
+  private tuya(): Promise<TuyaClient> {
+    return (this.client ??= this.makeClient().catch((e) => {
+      this.client = undefined;
+      throw e;
+    }));
+  }
+
+  private async makeClient(): Promise<TuyaClient> {
     const saved = await this.storage.get<TuyaSession>(SESSION_KEY);
     const seed = this.env.TUYA_SESSION ? sessionFromSeed(this.env.TUYA_SESSION) : undefined;
     // The saved session has the newest rotating tokens, so it wins, unless a later login was deployed.
     const session = saved && (!seed || saved.loginAt >= seed.loginAt) ? saved : seed;
     if (!session) throw new Error("No Tuya login is configured. Run scripts/tuya-login.py, then apply Terraform.");
     if (session !== saved) await this.storage.put(SESSION_KEY, session);
-    this.client = new TuyaClient(session, {
+    return new TuyaClient(session, {
       fetch: this.opts.fetch,
       now: this.opts.now,
       onSession: (s) => this.storage.put(SESSION_KEY, s),
+      reload: () => this.storage.get<TuyaSession>(SESSION_KEY),
     });
-    return this.client;
   }
 
   /** Starts a QR login. The user code comes from the login we already have, so nothing new needs configuring. */

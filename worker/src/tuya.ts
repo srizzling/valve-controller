@@ -158,6 +158,8 @@ export interface TuyaOptions {
   now?: () => number;
   /** Called with the new session whenever the tokens rotate. Save it before anything else uses the old one. */
   onSession?: (s: TuyaSession) => Promise<void> | void;
+  /** The saved session. If Tuya refuses our refresh token, something else may already have rotated it. */
+  reload?: () => Promise<TuyaSession | undefined> | TuyaSession | undefined;
   uuid?: () => string;
 }
 
@@ -193,16 +195,25 @@ export class TuyaClient {
   }
 
   private async refresh(): Promise<void> {
-    let env: Envelope;
-    try {
-      env = await this.sendRaw("GET", `/v1.0/m/token/${this.session.refreshToken}`);
-    } catch (e) {
-      if (e instanceof TuyaError && e.code) throw new TuyaAuthError(`Tuya refused to refresh the login (${e.code}: ${e.message}). Reconnect it from the UI (the 🔑 chip), or run scripts/tuya-login.py again.`, e.code);
-      throw e; // a network problem is not a reason to give up on the login
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const env = await this.sendRaw("GET", `/v1.0/m/token/${this.session.refreshToken}`);
+        const r = env.result as { expireTime: number; uid: string; accessToken: string; refreshToken: string };
+        this.session = { ...this.session, accessToken: r.accessToken, refreshToken: r.refreshToken, uid: r.uid, expireAt: (env.t ?? this.now()) + r.expireTime * 1000 };
+        await this.opts.onSession?.(this.session);
+        return;
+      } catch (e) {
+        if (!(e instanceof TuyaError && e.code)) throw e; // a network problem is not a reason to give up on the login
+        // Before declaring the login dead, check whether a newer one was saved since this client loaded its own.
+        const saved = attempt === 0 ? await this.opts.reload?.() : undefined;
+        if (saved && saved.loginAt >= this.session.loginAt && saved.refreshToken !== this.session.refreshToken) {
+          this.session = saved;
+          if (saved.expireAt - 60_000 > this.now()) return;
+          continue;
+        }
+        throw new TuyaAuthError(`Tuya refused to refresh the login (${e.code}: ${e.message}). Reconnect it from the UI (the 🔑 chip), or run scripts/tuya-login.py again.`, e.code);
+      }
     }
-    const r = env.result as { expireTime: number; uid: string; accessToken: string; refreshToken: string };
-    this.session = { ...this.session, accessToken: r.accessToken, refreshToken: r.refreshToken, uid: r.uid, expireAt: (env.t ?? this.now()) + r.expireTime * 1000 };
-    await this.opts.onSession?.(this.session);
   }
 
   private async send<T>(method: "GET" | "POST", path: string, params?: Record<string, unknown>, body?: Record<string, unknown>): Promise<T> {

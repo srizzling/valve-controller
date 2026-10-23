@@ -81,6 +81,15 @@ describe("TuyaClient", () => {
     expect(st.log.filter((l) => l.includes("/token/"))).toHaveLength(1);
   });
 
+  it("adopts a newer saved session instead of giving up when its own refresh token was already rotated", async () => {
+    const st = newState({ refresh: "ref2", access: "tok2" });
+    const newer = baseSession({ refreshToken: "ref2", accessToken: "tok2", expireAt: st.now + 3_600_000, loginAt: 1 });
+    const stale = baseSession({ expireAt: st.now - 1 });
+    const c = new TuyaClient(stale, { fetch: fakeServer(st), now: () => st.now, reload: () => newer });
+    await c.sendCommands("d", []);
+    expect(c.getSession().refreshToken).toBe("ref2");
+  });
+
   it("raises an auth error when Tuya refuses the refresh, but not on a network failure", async () => {
     const refused = newState({ failRefresh: "1010" });
     await expect(new TuyaClient(baseSession({ expireAt: 0 }), { fetch: fakeServer(refused), now: () => refused.now }).sendCommands("d", [])).rejects.toBeInstanceOf(TuyaAuthError);

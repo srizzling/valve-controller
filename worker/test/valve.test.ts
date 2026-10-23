@@ -79,6 +79,12 @@ describe("Valve", () => {
     expect(commands[0].map((c) => c.code)).toEqual(["switch", "countdown"]);
   });
 
+  it("shares one client between requests that arrive together, so the token is refreshed once", async () => {
+    const { valve, st } = setup({ envOver: { TUYA_SESSION: seedJson({ expire_time: 30 }) } });
+    await Promise.all([valve.status(), valve.status(), valve.status()]);
+    expect(st.log.filter((l) => l.includes("/v1.0/m/token/"))).toHaveLength(1);
+  });
+
   describe("login persistence", () => {
     it("saves the seed on first use", async () => {
       const { valve, storage } = setup();
