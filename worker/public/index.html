@@ -228,7 +228,7 @@
       <div class="hud-top">
         <span id="pill" class="pill pill-idle"><i class="dot"></i><span id="pill-text">Scheduled</span></span>
       </div>
-      <div class="hud-bottom"><span id="wx-chip" class="chip" hidden></span><span id="valve-chip" class="chip" hidden></span></div>
+      <div class="hud-bottom"><span id="wx-chip" class="chip" hidden></span><button id="valve-chip" type="button" class="chip" hidden></button></div>
     </div>
 
     <div class="panel">
@@ -302,6 +302,16 @@
     </section>
   </div>
 </main>
+
+<dialog id="reconnect" class="card reconnect" aria-labelledby="reconnect-title">
+  <h2 id="reconnect-title">Reconnect Tuya</h2>
+  <p id="reconnect-text">Tuya no longer accepts the saved login. Scan this code with the Smart Life app (Me, then the scan icon) to sign in again.</p>
+  <div id="reconnect-qr" class="reconnect-qr" aria-label="QR code to scan in the Smart Life app"></div>
+  <div class="row">
+    <button id="reconnect-new" type="button" class="btn btn-ghost">New code</button>
+    <button id="reconnect-close" type="button" class="btn">Close</button>
+  </div>
+</dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script src="/app.js" type="module"></script>

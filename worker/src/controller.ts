@@ -13,7 +13,7 @@ import { TuyaAuthError } from "./tuya";
 import { getWeather } from "./weather";
 import type { WeatherBundle } from "./weather";
 import { Valve } from "./valve";
-import type { ValveStatus } from "./valve";
+import type { Reconnect, ValveStatus } from "./valve";
 
 export interface HistoryEntry {
   at: number;
@@ -77,8 +77,21 @@ export class Controller extends DurableObject<Env> {
     return { state, config, now, timezone: this.env.TIMEZONE, nextRunAt: nextRunAt(config, now, placeOf(this.env)), history: history ?? [] };
   }
 
-  getValve(): Promise<ValveStatus> {
-    return this.valve.status();
+  /** Errors do not keep their class across a Durable Object call, so say here whether the login is the problem. */
+  async getValve(): Promise<ValveStatus | { error: string; loginExpired: boolean }> {
+    try {
+      return await this.valve.status();
+    } catch (e) {
+      return { error: message(e), loginExpired: e instanceof TuyaAuthError };
+    }
+  }
+
+  reconnectStart(): Promise<Reconnect> {
+    return this.serial(() => this.valve.reconnectStart());
+  }
+
+  reconnectCheck(): Promise<Reconnect> {
+    return this.serial(() => this.valve.reconnectCheck());
   }
 
   start(trigger: Trigger): Promise<{ ok: boolean; message: string }> {

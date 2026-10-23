@@ -20,7 +20,7 @@ ntfy messages tell you what happened. These catch what didn't:
 | --- | --- | --- |
 | Missed run | healthchecks.io | a scheduled run does not report in, so the schedule, Worker or Cloudflare is down |
 | Cannot reach the valve | ntfy, 10 min before each scheduled start | Tuya's cloud did not answer |
-| Tuya login expired | ntfy, same check, priority 5 | the saved login no longer refreshes: run `scripts/tuya-login.py` |
+| Tuya login expired | ntfy, same check, priority 5 | the saved login no longer refreshes: press the 🔑 chip in the UI and scan the QR code (or run `scripts/tuya-login.py`) |
 | Valve offline | ntfy, same check | Tuya reports the valve offline: check its Wi-Fi and batteries |
 | Low battery | ntfy, same check | the valve reports 20% or less |
 | Open while idle | ntfy, same check, priority 5 | the valve is open with no run active |

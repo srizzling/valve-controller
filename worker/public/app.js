@@ -494,7 +494,7 @@ async function api(path, options = {}) {
     throw new Error("Session expired or offline. Reload the page to sign in again.");
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? body.message ?? res.statusText);
+  if (!res.ok) throw Object.assign(new Error(body.error ?? body.message ?? res.statusText), { body });
   return body;
 }
 
@@ -541,7 +541,14 @@ function renderValve() {
   const chip = $("valve-chip");
   if (!valve) return;
   chip.hidden = false;
-  if (valve.error) {
+  chip.disabled = false;
+  chip.onclick = null;
+  if (valve.loginExpired) {
+    chip.className = "chip warn action";
+    chip.textContent = "🔑 Tuya login expired · reconnect";
+    chip.title = valve.error;
+    chip.onclick = openReconnect;
+  } else if (valve.error) {
     chip.className = "chip warn";
     chip.textContent = "🚰 valve unreachable";
     chip.title = valve.error;
@@ -558,10 +565,56 @@ async function refreshValve() {
   try {
     valve = await api("/valve");
   } catch (e) {
-    valve = { error: e.message };
+    valve = { error: e.message, loginExpired: !!e.body?.loginExpired };
   }
   renderValve();
 }
+
+/* ───────────────────────── reconnect Tuya ───────────────────────── */
+
+let reconnectTimer = null;
+
+async function reconnectCode() {
+  clearTimeout(reconnectTimer);
+  $("reconnect-qr").replaceChildren();
+  try {
+    showReconnect(await api("/tuya/login", { method: "POST" }));
+  } catch (e) {
+    $("reconnect-text").textContent = e.message;
+  }
+}
+
+function showReconnect(r) {
+  if (r.state === "waiting") {
+    // the server builds this SVG from Tuya's token: one path, no scripts or styles
+    $("reconnect-qr").innerHTML = r.svg;
+    reconnectTimer = setTimeout(pollReconnect, 3000);
+  } else if (r.state === "done") {
+    $("reconnect").close();
+    toast("Tuya is connected again.");
+    refreshValve();
+  } else {
+    $("reconnect-qr").replaceChildren();
+    $("reconnect-text").textContent = "That code ran out. Press New code to try again.";
+  }
+}
+
+async function pollReconnect() {
+  if (!$("reconnect").open) return;
+  try {
+    showReconnect(await api("/tuya/login"));
+  } catch (e) {
+    $("reconnect-text").textContent = e.message;
+  }
+}
+
+function openReconnect() {
+  $("reconnect").showModal();
+  reconnectCode();
+}
+$("reconnect-new").onclick = reconnectCode;
+$("reconnect-close").onclick = () => $("reconnect").close();
+$("reconnect").addEventListener("close", () => clearTimeout(reconnectTimer));
 
 async function act(path, okText) {
   busy = true;

@@ -11,6 +11,8 @@ import { plannedRuns } from "./outlook";
 import type { PlannedRun } from "./outlook";
 import { placeOf } from "./place";
 import { securityHeaders } from "./security";
+import { qrSvg } from "./qr";
+import type { Reconnect } from "./valve";
 
 export { Controller };
 
@@ -79,9 +81,26 @@ api.get("/rain", async (c) => {
 });
 api.get("/valve", async (c) => {
   try {
-    return c.json(await controller(c.env).getValve());
+    const valve = await controller(c.env).getValve();
+    return c.json(valve, "error" in valve ? 502 : 200);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "valve unreachable" }, 502);
+  }
+});
+// Sign the Worker back in to Tuya from the UI: POST shows a QR code to scan in the Smart Life app, GET polls for the scan.
+const reconnectReply = (r: Reconnect) => ("payload" in r ? { state: r.state, svg: qrSvg(r.payload) } : r);
+api.post("/tuya/login", async (c) => {
+  try {
+    return c.json(reconnectReply(await controller(c.env).reconnectStart()));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "could not start the login" }, 502);
+  }
+});
+api.get("/tuya/login", async (c) => {
+  try {
+    return c.json(reconnectReply(await controller(c.env).reconnectCheck()));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "could not check the login" }, 502);
   }
 });
 

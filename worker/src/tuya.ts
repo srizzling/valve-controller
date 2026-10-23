@@ -26,7 +26,7 @@ export class TuyaError extends Error {
   }
 }
 
-/** The login can no longer be refreshed: someone has to run scripts/tuya-login.py again. */
+/** The login can no longer be refreshed: someone has to scan a new QR code, in the UI or with scripts/tuya-login.py. */
 export class TuyaAuthError extends TuyaError {}
 
 /** The JSON that scripts/tuya-login.py writes (Tuya's own field names). */
@@ -46,6 +46,35 @@ export function sessionFromSeed(json: string): TuyaSession {
     expireAt: Number(s.t) + Number(s.expire_time) * 1000,
     loginAt: Number(s.t),
   };
+}
+
+// ───────────── QR login ─────────────
+// The same two unsigned calls that scripts/tuya-login.py makes through Tuya's SDK: ask for a QR token, then poll until
+// someone scans it in the Smart Life app. Lets the Worker take a new login without the script or a deploy.
+
+const LOGIN_HOST = "https://apigw.iotbing.com";
+const LOGIN_SCHEMA = "haauthorize";
+/** Home Assistant's registered client id, the only one Tuya's QR login accepts for third-party tools. */
+export const HA_CLIENT_ID = "HA_3y9q4ak7g4ephrvke";
+
+/** What the Smart Life app's scanner reads from the QR code. */
+export const qrPayload = (token: string) => `tuyaSmart--qrLogin?token=${token}`;
+
+export async function startQrLogin(userCode: string, doFetch: typeof fetch = fetch): Promise<string> {
+  const url = `${LOGIN_HOST}/v1.0/m/life/home-assistant/qrcode/tokens?clientid=${HA_CLIENT_ID}&usercode=${encodeURIComponent(userCode)}&schema=${LOGIN_SCHEMA}`;
+  const res = await doFetch(url, { method: "POST", signal: AbortSignal.timeout(20_000) });
+  const env = (await res.json()) as { success?: boolean; msg?: string; code?: string | number; result?: { qrcode?: string } };
+  if (!env.success || !env.result?.qrcode) throw new TuyaError(`Tuya refused the login request: ${env.msg ?? env.code ?? `HTTP ${res.status}`}`, String(env.code ?? ""));
+  return env.result.qrcode;
+}
+
+/** The new login once the QR code has been scanned, or null while it is still waiting. */
+export async function checkQrLogin(token: string, userCode: string, doFetch: typeof fetch = fetch): Promise<TuyaSession | null> {
+  const url = `${LOGIN_HOST}/v1.0/m/life/home-assistant/qrcode/tokens/${encodeURIComponent(token)}?clientid=${HA_CLIENT_ID}&usercode=${encodeURIComponent(userCode)}`;
+  const res = await doFetch(url, { signal: AbortSignal.timeout(20_000) });
+  const env = (await res.json()) as { success?: boolean; t?: number; result?: Record<string, string | number> };
+  if (!env.success || !env.result) return null;
+  return sessionFromSeed(JSON.stringify({ client_id: HA_CLIENT_ID, user_code: userCode, ...env.result, t: env.t }));
 }
 
 // ───────────── crypto ─────────────
@@ -168,7 +197,7 @@ export class TuyaClient {
     try {
       env = await this.sendRaw("GET", `/v1.0/m/token/${this.session.refreshToken}`);
     } catch (e) {
-      if (e instanceof TuyaError && e.code) throw new TuyaAuthError(`Tuya refused to refresh the login (${e.code}: ${e.message}). Run scripts/tuya-login.py again.`, e.code);
+      if (e instanceof TuyaError && e.code) throw new TuyaAuthError(`Tuya refused to refresh the login (${e.code}: ${e.message}). Reconnect it from the UI (the 🔑 chip), or run scripts/tuya-login.py again.`, e.code);
       throw e; // a network problem is not a reason to give up on the login
     }
     const r = env.result as { expireTime: number; uid: string; accessToken: string; refreshToken: string };

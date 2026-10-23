@@ -1,8 +1,10 @@
 import type { Env } from "./env";
-import { sessionFromSeed, TuyaClient } from "./tuya";
+import { checkQrLogin, qrPayload, sessionFromSeed, startQrLogin, TuyaClient } from "./tuya";
 import type { TuyaSession } from "./tuya";
 
 const SESSION_KEY = "tuya:session";
+const PENDING_QR_KEY = "tuya:pendingQr";
+const QR_LIFETIME_MS = 3 * 60_000; // Tuya's QR codes stop working after about this long
 
 // The valve closes itself this long after it was meant to, if the Worker never sends the close. It is the
 // failsafe the homelab agent's timer used to be. It only applies when the valve has a countdown function.
@@ -14,6 +16,8 @@ export interface ValveStatus {
   batteryPct?: number;
   countdownSeconds?: number;
 }
+
+export type Reconnect = { state: "waiting"; payload: string } | { state: "done" } | { state: "expired" } | { state: "none" };
 
 export interface ValveOptions {
   fetch?: typeof fetch;
@@ -50,6 +54,36 @@ export class Valve {
     });
     return this.client;
   }
+
+  /** Starts a QR login. The user code comes from the login we already have, so nothing new needs configuring. */
+  async reconnectStart(): Promise<Reconnect & { state: "waiting" }> {
+    const userCode = (await this.storage.get<TuyaSession>(SESSION_KEY))?.userCode ?? (this.env.TUYA_SESSION ? sessionFromSeed(this.env.TUYA_SESSION).userCode : "");
+    if (!userCode) throw new Error("No Tuya User Code is known. Run scripts/tuya-login.py once to set one up.");
+    const token = await startQrLogin(userCode, this.opts.fetch);
+    await this.storage.put(PENDING_QR_KEY, { token, userCode, startedAt: this.now() });
+    return { state: "waiting", payload: qrPayload(token) };
+  }
+
+  /** The QR code being scanned in the app is what finishes the login, so poll this until it says done. */
+  async reconnectCheck(): Promise<Reconnect> {
+    const pending = await this.storage.get<{ token: string; userCode: string; startedAt: number }>(PENDING_QR_KEY);
+    if (!pending) return { state: "none" };
+    if (this.now() - pending.startedAt > QR_LIFETIME_MS) {
+      await this.storage.delete(PENDING_QR_KEY);
+      return { state: "expired" };
+    }
+    const session = await checkQrLogin(pending.token, pending.userCode, this.opts.fetch);
+    if (!session) return { state: "waiting", payload: qrPayload(pending.token) };
+    // Do not trade a login for one that cannot see the valve, such as a scan from the wrong Smart Life account.
+    const probe = new TuyaClient(session, { fetch: this.opts.fetch, now: this.opts.now });
+    await probe.deviceStatus(this.env.TUYA_DEVICE_ID);
+    await this.storage.put(SESSION_KEY, probe.getSession()); // after the call: it may have refreshed the tokens
+    await this.storage.delete(PENDING_QR_KEY);
+    this.client = undefined;
+    return { state: "done" };
+  }
+
+  private now = () => (this.opts.now ?? Date.now)();
 
   async status(): Promise<ValveStatus> {
     const { online, status } = await (await this.tuya()).deviceStatus(this.env.TUYA_DEVICE_ID);
