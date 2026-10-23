@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "5e65ab0a7b6908f6398eb3bd45daaab611268aef"
+      "revision": "95f2600857c2602fa1c01c89335bffa7d2e28e21"
     }
   },
   "components": [
@@ -142,14 +142,14 @@
       "sources": [
         {
           "path": "worker/src/tuya.ts",
-          "line": 172,
-          "end_line": 179,
+          "line": 174,
+          "end_line": 181,
           "label": "signed client"
         },
         {
           "path": "worker/src/tuya.ts",
-          "line": 195,
-          "end_line": 207,
+          "line": 197,
+          "end_line": 218,
           "label": "token refresh"
         },
         {
@@ -177,14 +177,14 @@
       "sources": [
         {
           "path": "worker/src/valve.ts",
-          "line": 99,
-          "end_line": 105,
+          "line": 107,
+          "end_line": 113,
           "label": "open + countdown"
         },
         {
           "path": "worker/src/valve.ts",
-          "line": 112,
-          "end_line": 120,
+          "line": 120,
+          "end_line": 128,
           "label": "confirm state"
         }
       ]
