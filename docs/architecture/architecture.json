@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "95f2600857c2602fa1c01c89335bffa7d2e28e21"
+      "revision": "9050e99d6579f591612d5edee1879ed19e49ef8e"
     }
   },
   "components": [
@@ -177,14 +177,14 @@
       "sources": [
         {
           "path": "worker/src/valve.ts",
-          "line": 107,
-          "end_line": 113,
+          "line": 108,
+          "end_line": 114,
           "label": "open + countdown"
         },
         {
           "path": "worker/src/valve.ts",
-          "line": 120,
-          "end_line": 128,
+          "line": 121,
+          "end_line": 129,
           "label": "confirm state"
         }
       ]
