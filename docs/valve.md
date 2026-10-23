@@ -20,7 +20,8 @@ output, and against an independent mock of Tuya's server.
   Press it, scan the QR code with the Smart Life app (Me > the scan icon) and the Worker stores the new login itself. That
   needs no laptop, script or Terraform apply, so it works from anywhere (show the code on one screen, scan it with the
   phone). The login is checked against the valve first, so scanning from the wrong Smart Life account changes nothing.
-  The script and Terraform route still works and is how the very first login is made.
+  The script and Terraform route still works. `tuya_user_code` in `terraform.tfvars` (the script writes it) is all the
+  Worker needs to start a reconnect, so once it has signed in the login itself need not be kept in Terraform or CI.
 
 This relies on an API Tuya does not document for third parties, and signs in with Home Assistant's registered client id
 because Tuya has not registered one for this project. It is stable while Home Assistant depends on it, but Tuya could

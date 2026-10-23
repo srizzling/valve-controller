@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Env } from "../src/env";
-import { sessionFromSeed } from "../src/tuya";
+import { sessionFromSeed, TuyaAuthError } from "../src/tuya";
 import { Valve } from "../src/valve";
 import { fakeServer, newState } from "./helpers/fakeTuya";
 
@@ -117,9 +117,10 @@ describe("Valve", () => {
       expect((newer.data.get("tuya:session") as { loginAt: number }).loginAt).toBe(3_000_000);
     });
 
-    it("explains when there is no login at all", async () => {
+    it("asks for a reconnect when there is no login at all", async () => {
       const { valve } = setup({ envOver: { TUYA_SESSION: "" } });
-      await expect(valve.status()).rejects.toThrow(/scripts\/tuya-login/);
+      await expect(valve.status()).rejects.toThrow(/Reconnect/);
+      await expect(valve.status()).rejects.toBeInstanceOf(TuyaAuthError); // so the UI offers the reconnect button
     });
   });
 
@@ -172,6 +173,14 @@ describe("Valve", () => {
       scan();
       await expect(valve.reconnectCheck()).rejects.toThrow(/does not list device/);
       expect(storage.data.get("tuya:session")).toBe(before);
+    });
+
+    it("can start a reconnect from the User Code alone, with no saved login and no seed", async () => {
+      const { valve } = reconnectSetup();
+      const bare = new Valve(new FakeStorage() as unknown as DurableObjectStorage, env({ TUYA_SESSION: "", TUYA_USER_CODE: "AB12" }), { fetch: (valve as any).opts.fetch });
+      expect(await bare.reconnectStart()).toMatchObject({ state: "waiting" });
+      const none = new Valve(new FakeStorage() as unknown as DurableObjectStorage, env({ TUYA_SESSION: "" }), { fetch: (valve as any).opts.fetch });
+      await expect(none.reconnectStart()).rejects.toThrow(/tuya_user_code/);
     });
 
     it("gives up on a code after three minutes, and reports nothing pending otherwise", async () => {

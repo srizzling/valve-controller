@@ -4,6 +4,7 @@
 locals {
   worker_vars = {
     TUYA_DEVICE_ID      = var.tuya_device_id
+    TUYA_USER_CODE      = var.tuya_user_code
     TUYA_SWITCH_CODE    = var.tuya_switch_code
     TUYA_COUNTDOWN_CODE = var.tuya_countdown_code
     TIMEZONE            = var.timezone

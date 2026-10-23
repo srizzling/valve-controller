@@ -1,5 +1,5 @@
 import type { Env } from "./env";
-import { checkQrLogin, qrPayload, sessionFromSeed, startQrLogin, TuyaClient } from "./tuya";
+import { checkQrLogin, qrPayload, sessionFromSeed, startQrLogin, TuyaAuthError, TuyaClient } from "./tuya";
 import type { TuyaSession } from "./tuya";
 
 const SESSION_KEY = "tuya:session";
@@ -53,7 +53,7 @@ export class Valve {
     const seed = this.env.TUYA_SESSION ? sessionFromSeed(this.env.TUYA_SESSION) : undefined;
     // The saved session has the newest rotating tokens, so it wins, unless a later login was deployed.
     const session = saved && (!seed || saved.loginAt >= seed.loginAt) ? saved : seed;
-    if (!session) throw new Error("No Tuya login is configured. Run scripts/tuya-login.py, then apply Terraform.");
+    if (!session) throw new TuyaAuthError("No Tuya login is saved. Reconnect it from the UI (the 🔑 chip), or run scripts/tuya-login.py.");
     if (session !== saved) await this.storage.put(SESSION_KEY, session);
     return new TuyaClient(session, {
       fetch: this.opts.fetch,
@@ -65,8 +65,9 @@ export class Valve {
 
   /** Starts a QR login. The user code comes from the login we already have, so nothing new needs configuring. */
   async reconnectStart(): Promise<Reconnect & { state: "waiting" }> {
-    const userCode = (await this.storage.get<TuyaSession>(SESSION_KEY))?.userCode ?? (this.env.TUYA_SESSION ? sessionFromSeed(this.env.TUYA_SESSION).userCode : "");
-    if (!userCode) throw new Error("No Tuya User Code is known. Run scripts/tuya-login.py once to set one up.");
+    const saved = await this.storage.get<TuyaSession>(SESSION_KEY);
+    const userCode = saved?.userCode || this.env.TUYA_USER_CODE || (this.env.TUYA_SESSION ? sessionFromSeed(this.env.TUYA_SESSION).userCode : "");
+    if (!userCode) throw new Error("No Tuya User Code is known. Set tuya_user_code in infra/terraform.tfvars (Smart Life app: Me > settings > Account and Security > User Code) and apply Terraform.");
     const token = await startQrLogin(userCode, this.opts.fetch);
     await this.storage.put(PENDING_QR_KEY, { token, userCode, startedAt: this.now() });
     return { state: "waiting", payload: qrPayload(token) };
