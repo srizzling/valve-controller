@@ -99,10 +99,18 @@ describe("TuyaClient", () => {
     expect(err).toBeInstanceOf(TypeError);
   });
 
-  it("surfaces API errors with their code", async () => {
+  it("refreshes and retries once when Tuya drops the access token early", async () => {
     const st = newState({ access: "different" }); // the server no longer accepts the client's token
+    const c = new TuyaClient(baseSession(), { fetch: fakeServer(st), now: () => st.now });
+    await c.sendCommands("d", []);
+    expect(st.log).toEqual(["POST /v1.1/m/thing/d/commands", "GET /v1.0/m/token/ref", "POST /v1.1/m/thing/d/commands"]); // refused, refreshed, sent again
+    expect(c.getSession().refreshToken).toBe("ref+");
+  });
+
+  it("calls the login dead when the early drop cannot be refreshed", async () => {
+    const st = newState({ access: "different", failRefresh: "1010" });
     const err = await new TuyaClient(baseSession(), { fetch: fakeServer(st), now: () => st.now }).sendCommands("d", []).catch((e: unknown) => e as TuyaError);
-    expect(err).toBeInstanceOf(TuyaError);
+    expect(err).toBeInstanceOf(TuyaAuthError);
     expect((err as TuyaError).code).toBe("1010");
   });
 

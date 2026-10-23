@@ -17,7 +17,9 @@ export interface TuyaSession {
   accessToken: string;
   refreshToken: string;
   expireAt: number; // epoch ms
-  loginAt: number; // epoch ms of the QR login: a newer seed replaces an older saved session
+  loginAt: number; // epoch ms of the QR login: a newer seed replaces an older saved session, and it names the login
+  deadAt?: number; // set once Tuya has refused to refresh it: the Worker stops using it and keeps it only as a record
+  deadReason?: string;
 }
 
 export class TuyaError extends Error {
@@ -184,14 +186,32 @@ export class TuyaClient {
 
   async request<T = unknown>(method: "GET" | "POST", path: string, params?: Record<string, unknown>, body?: Record<string, unknown>): Promise<T> {
     await this.ensureFresh();
-    return this.send<T>(method, path, params, body);
+    try {
+      return await this.send<T>(method, path, params, body);
+    } catch (e) {
+      // 1010: Tuya no longer honours the access token although we thought it good. Refreshing settles whether the
+      // login is still alive (and throws TuyaAuthError if not). The request was refused, so sending it again is safe.
+      if (!(e instanceof TuyaError && e.code === "1010")) throw e;
+      await this.refreshNow();
+      return this.send<T>(method, path, params, body);
+    }
   }
 
-  private async ensureFresh(): Promise<void> {
+  /** Refreshes the access token if it is about to run out. Lets a login that is not in use stay alive. */
+  async refreshIfNeeded(): Promise<void> {
     if (this.session.expireAt - 60_000 > this.now()) return;
+    await this.refreshNow();
+  }
+
+  /** Refreshes now, even if the token is fresh: the quickest way to learn whether Tuya still honours this login. */
+  async refreshNow(): Promise<void> {
     // One refresh at a time: the old refresh token stops working as soon as the new one is issued.
     this.refreshing ??= this.refresh().finally(() => (this.refreshing = undefined));
     await this.refreshing;
+  }
+
+  private ensureFresh(): Promise<void> {
+    return this.refreshIfNeeded();
   }
 
   private async refresh(): Promise<void> {

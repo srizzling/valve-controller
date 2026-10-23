@@ -13,10 +13,17 @@ output, and against an independent mock of Tuya's server.
   error in the history and sends a priority 5 ntfy. If the close fails it alerts and tries again each minute. A run
   you configure to take longer than an hour will be stopped at the hour. The supervisor runs inside the Worker, so it
   does not help if Cloudflare or Tuya is down; the countdown does.
-- **The login** is created once by scanning a QR code (below) and is kept in the Worker's private storage. Tuya rotates
+- **The login** is created by scanning a QR code (below) and is kept in the Worker's private storage. Tuya rotates
   the refresh token each time it is used, so the Worker saves the new one every time and is the only thing that refreshes it.
-- **If the login stops working** (revoked in the app, or unused for too long), the check ten minutes before each scheduled
-  run sends a priority 5 ntfy saying so, and the valve chip in the UI turns into **🔑 Tuya login expired · reconnect**.
+- **Two logins.** The Worker keeps up to two independent logins, each its own refresh chain, and uses the newest working
+  one. If Tuya refuses one, the Worker retires it, carries on with the other and sends a priority 4 ntfy ("a Tuya login
+  stopped working"), so the valve stays reachable while you add a backup. Every minute it also refreshes the spare, so an
+  unused login is not let go. While there is only one, the valve chip reads **🔑 1 of 2 logins, add a backup**; press it
+  and scan a code to add the second. Whether Tuya lets two logins on one account live side by side is not documented. After
+  every scan the Worker refreshes the older login straight away and the UI says plainly if Tuya signed it out (then you
+  have one login, as before).
+- **If every login stops working** (revoked in the app, say), the Worker sends a priority 5 ntfy as it finds out, the check
+  ten minutes before each scheduled run repeats it, and the valve chip in the UI turns into **🔑 Tuya login expired · reconnect**.
   Press it, scan the QR code with the Smart Life app (Me > the scan icon) and the Worker stores the new login itself. That
   needs no laptop, script or Terraform apply, so it works from anywhere (show the code on one screen, scan it with the
   phone). The login is checked against the valve first, so scanning from the wrong Smart Life account changes nothing.

@@ -553,10 +553,14 @@ function renderValve() {
     chip.textContent = "🚰 valve unreachable";
     chip.title = valve.error;
   } else {
-    chip.className = `chip${valve.online ? "" : " warn"}`;
+    // with fewer logins than wanted, one more dead login would take the valve out of reach, so offer to add a backup
+    const short = valve.logins && valve.logins.live < valve.logins.wanted;
+    chip.className = `chip${valve.online && !short ? "" : " warn"}${short ? " action" : ""}`;
     const battery = valve.batteryPct === undefined ? "" : ` · 🔋 ${valve.batteryPct}%`;
-    chip.textContent = `🚰 ${valve.online ? "online" : "offline"}${battery}`;
+    const backup = short ? ` · 🔑 ${valve.logins.live} of ${valve.logins.wanted} logins, add a backup` : "";
+    chip.textContent = `🚰 ${valve.online ? "online" : "offline"}${battery}${backup}`;
     chip.title = valve.open ? "The valve reports open" : "The valve reports closed";
+    if (short) chip.onclick = openReconnect;
   }
 }
 
@@ -591,7 +595,8 @@ function showReconnect(r) {
     reconnectTimer = setTimeout(pollReconnect, 3000);
   } else if (r.state === "done") {
     $("reconnect").close();
-    toast("Tuya is connected again.");
+    const n = r.logins.live;
+    toast(n >= r.logins.wanted ? `Tuya is connected with ${n} logins.` : `Tuya is connected, with ${n} login. Tuya signed the older one out, so there is no backup yet.`);
     refreshValve();
   } else {
     $("reconnect-qr").replaceChildren();
@@ -609,6 +614,9 @@ async function pollReconnect() {
 }
 
 function openReconnect() {
+  $("reconnect-text").textContent = valve?.loginExpired
+    ? "Tuya no longer accepts the saved login. Scan this code with the Smart Life app (Me, then the scan icon) to sign in again."
+    : "Scan this code with the Smart Life app (Me, then the scan icon) to add a backup login. The valve keeps working on the other login if one stops.";
   $("reconnect").showModal();
   reconnectCode();
 }
