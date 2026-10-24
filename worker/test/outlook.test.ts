@@ -6,7 +6,7 @@ import type { Forecast } from "../src/rain";
 
 const HOUR = 3_600_000;
 const tz = { timeZone: "Australia/Melbourne", latitude: -37.72, longitude: 145 }; // UTC+11 in October
-const config = { ...defaultConfig, schedules: [{ days: [3, 4], time: "06:00" }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 } };
+const config = { ...defaultConfig, schedules: [{ days: [3, 4], time: "06:00" }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6, catchUp: true } };
 // Wed 2026-10-21 05:00 local = 2026-10-20 18:00 UTC
 const now = Date.UTC(2026, 9, 20, 18, 0);
 const run = (date: string) => scheduledRunsOn(config, date, tz)[0];
@@ -36,6 +36,16 @@ describe("plannedRuns", () => {
     const wetThursday = run("2026-10-22") + 1 * HOUR;
     expect(plannedRuns(config, "2026-10-21", forecast(wetThursday), [], now, tz)[0].state).toBe("will-run");
     expect(plannedRuns(config, "2026-10-22", forecast(wetThursday), [], now, tz)[0].state).toBe("skip");
+  });
+  it("forces the next run after a rain skip with no rain, and only that one", () => {
+    const skipped: HistoryEntry = { at: now - 10 * HOUR, trigger: "schedule", outcome: "skipped-rain", wateredSeconds: 0, note: "rain likely" };
+    const wet = forecast(run("2026-10-21") + 4 * HOUR); // starts after the run, so none has fallen yet
+    const forced = plannedRuns(config, "2026-10-21", wet, [skipped], now, tz)[0];
+    expect(forced).toMatchObject({ state: "will-run", reason: expect.stringContaining("goes ahead") });
+    expect(plannedRuns(config, "2026-10-21", wet, [], now, tz)[0].state).toBe("skip");
+    expect(plannedRuns({ ...config, rain: { ...config.rain, catchUp: false } }, "2026-10-21", wet, [skipped], now, tz)[0].state).toBe("skip");
+    const wetThursday = forecast(run("2026-10-22") + 1 * HOUR);
+    expect(plannedRuns(config, "2026-10-22", wetThursday, [skipped], now, tz)[0].state).toBe("skip"); // not the next run
   });
   it("has nothing on unscheduled days", () => {
     expect(plannedRuns(config, "2026-10-24", forecast(), [], now, tz)).toEqual([]);

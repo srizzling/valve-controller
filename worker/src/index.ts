@@ -60,6 +60,8 @@ api.get("/weather", async (c) => {
       else {
         try {
           nextRun.verdict = rainVerdict(forecast, status.config.rain, nextAt);
+          // a run forced after a rain skip goes ahead whatever the forecast says
+          if (nextRun.verdict.skip && nextRun.planned?.state === "will-run") nextRun.verdict = { skip: false, reason: nextRun.planned.reason };
         } catch (e) {
           nextRun.note = e instanceof Error ? e.message : "no forecast for that time";
         }

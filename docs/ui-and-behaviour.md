@@ -35,6 +35,15 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
 - Rain check applies to **scheduled** runs only: skip if any hour in the lookahead window is at or above the
   probability threshold, or the forecast total reaches the mm threshold. If the forecast can't be fetched it waters
   anyway and says so in the notification. Starting from the UI or by voice always runs.
+- **Catch-up**: when a run is skipped for rain, the controller checks again one hour after the look-ahead ends. If less rain
+  fell than your mm limit (or 1 mm when that is 0), the forecast no longer says rain is coming, and it is daylight, it waters
+  with a `catch-up` run, scaled by the weather like any other. If the rain came, it does nothing. It gives up 30 minutes
+  before your next start time, or after a day if there is none, so with two start times a day the next one is often the
+  make-up. Extra runs and weather skips (frost, wind, wet soil) never get one. Starting a run by hand cancels a pending
+  catch-up. Switch it off with "Make up a rain skip if the rain does not come" in the rain settings.
+- **Forced run**: if the last run in the history was skipped for rain and less rain than your mm limit has fallen since, the
+  next scheduled run ignores the rain forecast and goes ahead, so a forecast that keeps promising rain cannot starve the
+  garden day after day. Wet soil, wind and frost can still skip it. It uses the same setting as the catch-up.
 - Weather smarts change the number of cycles for scheduled runs (see below).
 - A start time can be a clock time, "N minutes before sunrise", "N minutes before sunset" or "N minutes after sunset".
   Sunrise and sunset are worked out from your latitude and longitude, so they follow the seasons. You can have as many

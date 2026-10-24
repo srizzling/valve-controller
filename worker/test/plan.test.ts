@@ -82,7 +82,7 @@ describe("rain verdict", () => {
   const forecast = (prob: number[], mm: number[]): Forecast => ({
     time: prob.map((_, i) => hour(i)), precipitation_probability: prob, precipitation: mm,
   });
-  const rain = { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 3 };
+  const rain = { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 3, catchUp: true };
 
   it("waters on a dry forecast", () => expect(rainVerdict(forecast([0, 10, 20, 30, 90], [0, 0, 0, 0, 5]), rain, now).skip).toBe(false));
   it("skips on high probability", () => expect(rainVerdict(forecast([0, 60, 0, 0], [0, 0, 0, 0]), rain, now).skip).toBe(true));
@@ -203,6 +203,8 @@ describe("saved configs and the new settings", () => {
     expect(c.smart).toEqual(defaultConfig.smart);
     expect(c.schedules[0]).toMatchObject({ at: "clock", time: "06:00" });
     expect(validateConfig(old).smart).toEqual(defaultConfig.smart);
+    expect(validateConfig(old).rain.catchUp).toBe(true); // on for a config saved before it existed
+    expect(validateConfig({ ...old, rain: { ...old.rain, catchUp: false } }).rain.catchUp).toBe(false);
   });
 
   it("keeps the settings you changed and fills only what is missing", () => {
