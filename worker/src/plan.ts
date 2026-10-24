@@ -65,7 +65,7 @@ export const defaultConfig: Config = {
     minPercent: 25,
     maxPercent: 150,
     soilDryBelow: 0.2,
-    soilWetAbove: 0.35,
+    soilWetAbove: 0.4,
     wind: { enabled: true, maxKmh: 30 },
     frost: { enabled: true, belowC: 2 },
   },
