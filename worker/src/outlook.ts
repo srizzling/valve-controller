@@ -1,5 +1,6 @@
 import type { HistoryEntry } from "./controller";
-import { scheduledEntriesOn } from "./plan";
+import { forcedAfterRainSkip } from "./catchup";
+import { nextRunAt, scheduledEntriesOn } from "./plan";
 import type { Config, Place, ScheduleEntry } from "./plan";
 import { rainVerdict } from "./rain";
 import type { Forecast } from "./rain";
@@ -26,8 +27,10 @@ const MATCH_MS = 5 * 60_000;
  */
 export function plannedRuns(config: Config, date: string, forecast: Forecast, history: HistoryEntry[], now: number, place: Place): PlannedRun[] {
   const runs: PlannedRun[] = [];
+  const next = nextRunAt(config, now, place); // only the next run can be forced; after it there is a fresh record
+  const forced = forcedAfterRainSkip(history, forecast, config.rain, now);
   for (const { at, entry } of scheduledEntriesOn(config, date, place)) {
-    const run = at <= now ? pastRun(at, entry.onlyIfEtMm !== undefined, history) : futureRun(config, at, entry, forecast, place);
+    const run = at <= now ? pastRun(at, entry.onlyIfEtMm !== undefined, history) : futureRun(config, at, entry, forecast, place, at === next ? forced : null);
     if (run) runs.push(run);
   }
   return runs;
@@ -41,7 +44,7 @@ function pastRun(at: number, isExtra: boolean, history: HistoryEntry[]): Planned
   return { at, state: "failed", reason: h.note };
 }
 
-function futureRun(config: Config, at: number, entry: ScheduleEntry, forecast: Forecast, place: Place): PlannedRun | null {
+function futureRun(config: Config, at: number, entry: ScheduleEntry, forecast: Forecast, place: Place, forced: string | null): PlannedRun | null {
   const input = inputsAt(forecast, at, place.timeZone);
   if (entry.onlyIfEtMm !== undefined) {
     const want = extraRunWanted(entry.onlyIfEtMm, input.etMm);
@@ -52,8 +55,8 @@ function futureRun(config: Config, at: number, entry: ScheduleEntry, forecast: F
   if (config.rain.enabled) {
     try {
       const v = rainVerdict(forecast, config.rain, at);
-      if (v.skip) return { at, state: "skip", reason: v.reason };
-      rainNote = v.reason;
+      if (v.skip && !forced) return { at, state: "skip", reason: v.reason };
+      rainNote = v.skip ? `${v.reason}. ${forced}` : v.reason;
     } catch {
       return { at, state: "unknown", reason: "the forecast does not reach this far yet" };
     }

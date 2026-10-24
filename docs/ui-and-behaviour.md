@@ -40,7 +40,10 @@ To preview every scene without a backend, serve `worker/public` and open `/?demo
   with a `catch-up` run, scaled by the weather like any other. If the rain came, it does nothing. It gives up 30 minutes
   before your next start time, or after a day if there is none, so with two start times a day the next one is often the
   make-up. Extra runs and weather skips (frost, wind, wet soil) never get one. Starting a run by hand cancels a pending
-  catch-up. Switch it off with "Water later if the rain does not come" in the rain settings.
+  catch-up. Switch it off with "Make up a rain skip if the rain does not come" in the rain settings.
+- **Forced run**: if the last run in the history was skipped for rain and less rain than your mm limit has fallen since, the
+  next scheduled run ignores the rain forecast and goes ahead, so a forecast that keeps promising rain cannot starve the
+  garden day after day. Wet soil, wind and frost can still skip it. It uses the same setting as the catch-up.
 - Weather smarts change the number of cycles for scheduled runs (see below).
 - A start time can be a clock time, "N minutes before sunrise", "N minutes before sunset" or "N minutes after sunset".
   Sunrise and sunset are worked out from your latitude and longitude, so they follow the seasons. You can have as many

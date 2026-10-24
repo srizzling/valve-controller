@@ -1,6 +1,7 @@
 // Making up a run that was skipped for rain that never came. Pure functions: the skipped run and the forecast go in,
 // wait, drop or run comes out.
 
+import type { HistoryEntry } from "./controller";
 import type { Place, RainConfig } from "./plan";
 import { rainVerdict } from "./rain";
 import type { Forecast } from "./rain";
@@ -22,6 +23,8 @@ export function newCatchUp(skippedAt: number, rain: RainConfig, nextRun: number 
   const expiresAt = Math.min(skippedAt + MAX_WAIT_MS, nextRun === null ? Infinity : nextRun - NEXT_RUN_BUFFER_MS);
   return expiresAt > checkAt ? { skippedAt, checkAt, expiresAt } : null;
 }
+
+const enoughRain = (rain: RainConfig) => (rain.mm > 0 ? rain.mm : 1); // the bar for "the forecast rain came"
 
 function rainSince(forecast: Forecast, since: number, now: number): number | null {
   let total = 0;
@@ -49,11 +52,24 @@ export function catchUpStep(pending: CatchUp, forecast: Forecast | undefined, ra
   if (now < pending.checkAt || !forecast || !daylight(now, place)) return { do: "wait" };
   const fell = rainSince(forecast, pending.skippedAt, now);
   if (fell === null) return { do: "wait" };
-  if (fell >= (rain.mm > 0 ? rain.mm : 1)) return { do: "drop" };
+  if (fell >= enoughRain(rain)) return { do: "drop" };
   try {
     if (rainVerdict(forecast, rain, now).skip) return { do: "wait" }; // more rain is on the way, so keep waiting
   } catch {
     // no forecast for the window: water anyway, as a scheduled run would
   }
   return { do: "run", note: `Catch-up for the run skipped for rain: only ${fell.toFixed(1)} mm fell.` };
+}
+
+/**
+ * A scheduled run goes ahead despite a rain forecast when the run before it was skipped for rain and not enough fell
+ * since: the garden has gone without, and forecasts keep promising rain that does not come. Returns why, or null.
+ * `history` is newest first. Soil that is actually wet still skips the run, so this only overrides the forecast.
+ */
+export function forcedAfterRainSkip(history: HistoryEntry[], forecast: Forecast, rain: RainConfig, now: number): string | null {
+  const last = history[0];
+  if (!rain.catchUp || last?.outcome !== "skipped-rain") return null;
+  const fell = rainSince(forecast, last.at, now);
+  if (fell === null || fell >= enoughRain(rain)) return null;
+  return `The last run was skipped for rain and only ${fell.toFixed(1)} mm fell since, so this one goes ahead.`;
 }

@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { catchUpStep, newCatchUp } from "./catchup";
+import { catchUpStep, forcedAfterRainSkip, newCatchUp } from "./catchup";
 import type { CatchUp } from "./catchup";
 import type { Env } from "./env";
 import { ping } from "./heartbeat";
@@ -251,7 +251,8 @@ export class Controller extends DurableObject<Env> {
         if (trigger === "schedule" && config.rain.enabled) {
           try {
             const verdict = rainVerdict(weather.forecast, config.rain, now);
-            if (verdict.skip) {
+            const forced = verdict.skip ? forcedAfterRainSkip((await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [], weather.forecast, config.rain, now) : null;
+            if (verdict.skip && !forced) {
               await this.record({ at: now, trigger, outcome: "skipped-rain", wateredSeconds: 0, note: verdict.reason });
               const pending = extraRunEtMm === undefined && config.rain.catchUp ? newCatchUp(now, config.rain, nextRunAt(config, now, placeOf(this.env))) : null;
               if (pending) await this.ctx.storage.put("catchUp", pending);
@@ -260,7 +261,7 @@ export class Controller extends DurableObject<Env> {
               await this.heartbeat(trigger, "ok", `skipped for rain: ${verdict.reason}`);
               return { ok: true, message: `skipped: ${verdict.reason}` };
             }
-            rainNote = ` Forecast: ${verdict.reason}.`;
+            rainNote = forced ? ` Forecast: ${verdict.reason}. ${forced}` : ` Forecast: ${verdict.reason}.`;
           } catch (e) {
             rainNote = ` Rain check failed (${message(e)}), watering anyway.`;
           }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { catchUpStep, newCatchUp } from "../src/catchup";
+import { catchUpStep, forcedAfterRainSkip, newCatchUp } from "../src/catchup";
+import type { HistoryEntry } from "../src/controller";
 import { defaultConfig } from "../src/plan";
 import type { Forecast } from "../src/rain";
 
@@ -69,5 +70,22 @@ describe("catchUpStep", () => {
   it("uses 1 mm as the bar when the mm limit is off", () => {
     expect(step(forecast({ 10: 0.6 }), local(14), { ...rain, mm: 0 }).do).toBe("run");
     expect(step(forecast({ 10: 1.2 }), local(14), { ...rain, mm: 0 }).do).toBe("drop");
+  });
+});
+
+describe("forcedAfterRainSkip", () => {
+  const entry = (outcome: HistoryEntry["outcome"], at = skippedAt): HistoryEntry => ({ at, trigger: "schedule", outcome, wateredSeconds: 0, note: "" });
+  const forced = (history: HistoryEntry[], f: Forecast, at = local(30), cfg = rain) => forcedAfterRainSkip(history, f, cfg, at);
+
+  it("forces the next run when the last was skipped for rain and none fell", () => expect(forced([entry("skipped-rain")], forecast({ 10: 0.2 }))).toContain("goes ahead"));
+  it("does not when the rain came", () => expect(forced([entry("skipped-rain")], forecast({ 9: 0.6, 10: 0.6 }))).toBeNull());
+  it("does not when the last run watered or was skipped for another reason", () => {
+    expect(forced([entry("completed")], forecast())).toBeNull();
+    expect(forced([entry("skipped-weather")], forecast())).toBeNull();
+  });
+  it("only looks at the most recent entry", () => expect(forced([entry("completed", skippedAt + HOUR), entry("skipped-rain")], forecast())).toBeNull());
+  it("does nothing with no history, or when switched off", () => {
+    expect(forced([], forecast())).toBeNull();
+    expect(forced([entry("skipped-rain")], forecast(), local(30), { ...rain, catchUp: false })).toBeNull();
   });
 });
