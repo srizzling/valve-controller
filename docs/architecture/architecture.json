@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "7c382e5fe64b183cac99c9dbc0300820313c4a3b"
+      "revision": "40138c38bd7bea8cd44724d7ae238985d8a0da1c"
     }
   },
   "components": [
@@ -108,21 +108,21 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 159,
-          "end_line": 204,
+          "line": 177,
+          "end_line": 221,
           "label": "alarm: cycle/soak"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 286,
-          "end_line": 332,
+          "line": 318,
+          "end_line": 359,
           "label": "supervise: one-hour limits"
         },
         {
-          "path": "worker/src/smart.ts",
-          "line": 52,
-          "end_line": 52,
-          "label": "scale cycles by weather"
+          "path": "worker/src/controller.ts",
+          "line": 166,
+          "end_line": 175,
+          "label": "catch-up after a rain skip"
         }
       ]
     },
@@ -254,12 +254,6 @@
       ],
       "sources": [
         {
-          "path": "worker/src/rain.ts",
-          "line": 15,
-          "end_line": 15,
-          "label": "forecast API"
-        },
-        {
           "path": "worker/src/weather.ts",
           "line": 164,
           "end_line": 164,
@@ -267,9 +261,15 @@
         },
         {
           "path": "worker/src/weather.ts",
-          "line": 122,
-          "end_line": 123,
+          "line": 153,
+          "end_line": 154,
           "label": "fresh 30 min, stale up to 6 h"
+        },
+        {
+          "path": "worker/src/weather.ts",
+          "line": 27,
+          "end_line": 27,
+          "label": "seven models vote on conditions now"
         }
       ]
     },
@@ -384,7 +384,7 @@
       "id": "controller-to-weather",
       "from": "controller",
       "to": "weather",
-      "label": "forecast (cached 30 min)",
+      "label": "forecast + model vote (cached 30 min)",
       "variant": "dashed"
     },
     {
@@ -421,6 +421,15 @@
         "Every open sets the valve's own countdown a little longer than the run, so the valve closes itself if Cloudflare is lost",
         "Each phase change reads the valve back, and stops the run if it was changed outside the controller",
         "Every minute a supervisor closes the valve and ends the run if the valve has been open, or a run has gone on, for more than an hour"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Weather and rain skips",
+      "items": [
+        "A scheduled run reads the cached Open-Meteo forecast. Rain, wind, frost or wet soil can skip it or change the number of cycles",
+        "Current conditions are a vote of seven forecast models, so one model drizzling on a clear day is outvoted",
+        "A rain skip leaves a note in the Controller. Once the look-ahead has passed, the cron tick checks how much rain fell and waters in daylight if the rain did not come, unless the next run is close"
       ]
     },
     {
