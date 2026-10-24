@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/srizzling/valve-controller/compare/valve-controller-v0.1.0...valve-controller-v0.2.0) (2026-10-24)
+
+
+### Features
+
+* **rain:** catch up and force the run after a rain skip ([#11](https://github.com/srizzling/valve-controller/issues/11)) ([756d4e7](https://github.com/srizzling/valve-controller/commit/756d4e7d6aa415941baae4f0af64411ee50c66ed))
+* **tuya:** reconnect from the UI, two logins, fix refresh race ([#7](https://github.com/srizzling/valve-controller/issues/7)) ([3610670](https://github.com/srizzling/valve-controller/commit/3610670e804f7c7f8b8fa99858cf8b190f3b09ad))
+* **weather:** vote of 7 models for current conditions ([#10](https://github.com/srizzling/valve-controller/issues/10)) ([4fea68a](https://github.com/srizzling/valve-controller/commit/4fea68a2ec4830022f3d9a0f722bc7cbaf13be19))
+
+
+### Bug Fixes
+
+* **deps:** override undici to 7.30.1 ([#12](https://github.com/srizzling/valve-controller/issues/12)) ([c13622f](https://github.com/srizzling/valve-controller/commit/c13622fad30f9e0a783b3faf063a900a6b8b24a2))
+* **smart:** raise the default soil wet threshold to 0.40 ([#13](https://github.com/srizzling/valve-controller/issues/13)) ([feee8cc](https://github.com/srizzling/valve-controller/commit/feee8cca01a8a1c095ae69247c120e378cefb126))
+* **ui:** make the reconnect chip clickable ([#9](https://github.com/srizzling/valve-controller/issues/9)) ([90a2dba](https://github.com/srizzling/valve-controller/commit/90a2dbabd75108231259dc644298c0af9638ddab))
+* **ui:** show rain and hose spray ([#14](https://github.com/srizzling/valve-controller/issues/14)) ([96b15d2](https://github.com/srizzling/valve-controller/commit/96b15d2b6b273e8de97489d3789c09676258844e))
+
 ## 0.1.0 (2026-10-22)
 
 
