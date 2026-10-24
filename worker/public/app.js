@@ -17,7 +17,14 @@ let selectedDay = null;
 
 const el = (name, attrs = {}, parent) => {
   const node = document.createElementNS(NS, name);
-  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k !== "style") { node.setAttribute(k, v); continue; }
+    // the CSP forbids a style attribute (style-src 'self'), but the CSSOM is allowed, so apply each declaration through it
+    for (const decl of v.split(";")) {
+      const i = decl.indexOf(":");
+      if (i > 0) node.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim());
+    }
+  }
   parent?.append(node);
   return node;
 };
@@ -61,13 +68,15 @@ function buildScene() {
     const fall = 88 + ((i * 7) % 20);
     const x = el("g", { class: "drop-x", style: `--dx:${dx}px;--dur:${dur}s;--delay:${delay}s` }, $("drops"));
     const y = el("g", { class: "drop-y spray", style: `--dur:${dur}s;--delay:${delay}s;--fall:${fall}px` }, x);
-    el("circle", { r: 1.1 + (i % 3) * 0.35 }, y);
+    el("circle", { r: 1.5 + (i % 3) * 0.5 }, y);
     if (i % 3 === 0) el("ellipse", { class: "splash", cx: 206 + dx, cy: 269, rx: 5, ry: 1.6, style: `--dur:${dur}s;--delay:${delay}s` }, $("splashes"));
   }
   // falling rain
-  for (let i = 0; i < 34; i++) {
-    const g = el("g", { transform: `translate(${(i * 13.7) % 430} 56)` }, $("streaks"));
-    el("line", { class: "streak", x1: 0, y1: 0, x2: -3, y2: 13, style: `--dur:${0.65 + rand() * 0.45}s;--delay:${-rand() * 1.2}s` }, g);
+  // two depths: a dense curtain of faint, short, slower streaks behind a thinner set of longer, brighter, faster ones
+  for (let i = 0; i < 80; i++) {
+    const near = i % 3 === 0;
+    const g = el("g", { transform: `translate(${((i * 7.9) % 440) - 10} 14)` }, $("streaks"));
+    el("line", { class: near ? "streak near" : "streak far", x1: 0, y1: 0, x2: near ? -4 : -2.5, y2: near ? 17 : 11, style: `--dur:${(near ? 0.5 : 0.8) + rand() * 0.35}s;--delay:${-rand() * 1.2}s` }, g);
   }
   for (let i = 0; i < 9; i++) {
     el("ellipse", { class: "rsplash", cx: 30 + i * 42 + rand() * 20, cy: 268, rx: 7, ry: 2, style: `--delay:${-rand() * 1.1}s` }, $("rainSplashes"));

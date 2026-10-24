@@ -314,7 +314,7 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .scene[data-wet="on"] .bloom { animation-duration: 1.5s; }
 .drop-x { animation: dropx var(--dur) linear infinite; animation-delay: var(--delay); }
 .drop-y { animation: dropy var(--dur) cubic-bezier(.45, 0, 1, 1) infinite; animation-delay: var(--delay); fill: #4cc9f0; stroke: #d7f6ff; stroke-width: .8; }
-.drop-y.spray { fill: #d4f1ff; stroke: none; }
+.drop-y.spray { fill: #e9f9ff; stroke: #3db9e8; stroke-width: .7; }
 .mist { fill: #d9f3ff; opacity: .3; animation: mist .3s ease-in-out infinite alternate; }
 .scene:not([data-valve="watering"]) .mist { animation-play-state: paused; }
 .splash { transform-box: fill-box; transform-origin: center; fill: none; stroke: #bff0ff; stroke-width: 1.6; opacity: 0; animation: splash var(--dur) linear infinite; animation-delay: var(--delay); }
@@ -323,7 +323,9 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 /* rain */
 .rain { opacity: 0; transition: opacity 1.6s ease; }
 .scene[data-rain="on"] .rain { opacity: 1; }
-.streak { stroke: #a9e3ff; stroke-width: 1.7; stroke-linecap: round; opacity: 0; animation: streak var(--dur) linear infinite; animation-delay: var(--delay); }
+.streak { stroke-linecap: round; opacity: 0; animation: streak var(--dur) linear infinite; animation-delay: var(--delay); }
+.streak.far { stroke: #cfeeff; stroke-width: 1.3; --peak: .5; }
+.streak.near { stroke: #f2fbff; stroke-width: 2.1; --peak: .95; }
 .rsplash { transform-box: fill-box; transform-origin: center; fill: none; stroke: #bff0ff; stroke-width: 1.3; opacity: 0; animation: rsplash 1.1s ease-out infinite; animation-delay: var(--delay); }
 .scene:not([data-rain="on"]) .rain * { animation-play-state: paused; }
 .puddles ellipse { fill: #4cc9f0; opacity: .55; transform-box: fill-box; transform-origin: center; transform: scaleX(0); transition: transform 8s ease; }
@@ -353,7 +355,7 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 @keyframes dropx { from { transform: translateX(0); } to { transform: translateX(var(--dx)); } }
 @keyframes dropy { 0% { transform: translateY(0); opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { transform: translateY(var(--fall)); opacity: 0; } }
 @keyframes splash { 0%, 84% { opacity: 0; transform: scale(.2); } 86% { opacity: .95; } 100% { opacity: 0; transform: scale(1.9); } }
-@keyframes streak { 0% { transform: translate(0, 0); opacity: 0; } 10% { opacity: .75; } 90% { opacity: .75; } 100% { transform: translate(-26px, 205px); opacity: 0; } }
+@keyframes streak { 0% { transform: translate(0, 0); opacity: 0; } 8% { opacity: var(--peak, .75); } 92% { opacity: var(--peak, .75); } 100% { transform: translate(-30px, 255px); opacity: 0; } }
 @keyframes rsplash { 0% { transform: scale(.2); opacity: .9; } 100% { transform: scale(1.8); opacity: 0; } }
 @keyframes seep { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(var(--run)); opacity: 0; } }
 @keyframes bee { 0% { transform: translate(280px, 190px); } 20% { transform: translate(310px, 130px); } 40% { transform: translate(262px, 78px); } 60% { transform: translate(150px, 60px); } 80% { transform: translate(128px, 150px); } 100% { transform: translate(280px, 190px); } }
