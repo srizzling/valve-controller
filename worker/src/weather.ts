@@ -19,12 +19,40 @@ export function describeWeather(code: number, isDay = true): Condition {
   return { label: "Cloudy", kind: "cloudy", icon: "☁️" };
 }
 
+/** What one forecast model says about the weather right now. */
+export interface ModelNow { code: number; precipitationMm: number; cloudCoverPct: number | null }
+
+// Open-Meteo's default blend is one model's opinion, and a single model will sometimes drizzle on a clear day. So the
+// current conditions are the consensus of several independent ones (the ECMWF run is the same one the blend uses).
+const CONSENSUS_MODELS = ["ecmwf_ifs", "gfs_global", "icon_global", "gem_global", "ukmo_global_deterministic_10km", "meteofrance_arpege_world", "jma_gsm"];
+const MIN_MODELS = 3; // with fewer answers than this, keep the blend's own reading
+const WET: Kind[] = ["drizzle", "rain", "snow", "storm"];
+
+const median = (xs: number[], upper = false) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[upper ? Math.floor(s.length / 2) : Math.ceil(s.length / 2) - 1];
+};
+
+/** The majority view of the models: wet only if most of them say so, otherwise the middle of the dry answers. */
+export function consensusNow(samples: ModelNow[], isDay: boolean): { condition: Condition; rainMm: number; cloudCoverPct: number | null; wet: boolean; models: number; agreeing: number } | null {
+  if (samples.length < MIN_MODELS) return null;
+  const wetCodes = samples.filter((s) => WET.includes(describeWeather(s.code).kind)).map((s) => s.code);
+  const wet = wetCodes.length * 2 > samples.length;
+  const code = wet ? median(wetCodes, true) : median(samples.map((s) => s.code).filter((c) => !wetCodes.includes(c)));
+  const clouds = samples.map((s) => s.cloudCoverPct).filter((c): c is number => typeof c === "number");
+  return {
+    condition: describeWeather(code, isDay), rainMm: median(samples.map((s) => s.precipitationMm)), cloudCoverPct: clouds.length ? median(clouds) : null, wet,
+    models: samples.length, agreeing: wet ? wetCodes.length : samples.length - wetCodes.length,
+  };
+}
+
 export interface WeatherData {
   fetchedAt: number;
   stale?: boolean;
   current: {
     temperatureC: number; feelsLikeC: number; humidityPct: number; windKmh: number; cloudCoverPct: number;
     rainLastHourMm: number; isDay: boolean; isRaining: boolean; condition: Condition;
+    consensus?: { models: number; agreeing: number }; // how many models back the condition shown
   };
   past24hMm: number;
   next24hMm: number;
@@ -52,7 +80,7 @@ interface OpenMeteo {
 const HOUR = 3_600_000;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-export function summarizeWeather(raw: OpenMeteo, now: number): WeatherBundle {
+export function summarizeWeather(raw: OpenMeteo, now: number, models: ModelNow[] = []): WeatherBundle {
   const off = raw.utc_offset_seconds * 1000;
   // hourly times are local wall-clock; convert to epoch ms using the reported offset
   const ts = raw.hourly.time.map((t) => Date.parse(`${t}:00Z`) - off);
@@ -77,8 +105,10 @@ export function summarizeWeather(raw: OpenMeteo, now: number): WeatherBundle {
 
   const c = raw.current as Record<string, number>;
   const isDay = c.is_day === 1;
-  const condition = describeWeather(c.weather_code, isDay);
-  const rainLastHourMm = c.precipitation ?? 0;
+  const agreed = consensusNow(models, isDay);
+  const condition = agreed?.condition ?? describeWeather(c.weather_code, isDay);
+  const rainLastHourMm = agreed?.rainMm ?? c.precipitation ?? 0;
+  const cloudCover = agreed?.cloudCoverPct ?? c.cloud_cover;
   const today = String(raw.current.time).slice(0, 10);
   const first = Math.max(0, raw.daily.time.indexOf(today));
   const daily = raw.daily.time.slice(first, first + 7).map((date, k) => {
@@ -95,8 +125,9 @@ export function summarizeWeather(raw: OpenMeteo, now: number): WeatherBundle {
       fetchedAt: now,
       current: {
         temperatureC: round1(c.temperature_2m), feelsLikeC: round1(c.apparent_temperature), humidityPct: Math.round(c.relative_humidity_2m),
-        windKmh: Math.round(c.wind_speed_10m), cloudCoverPct: Math.round(c.cloud_cover), rainLastHourMm: round1(rainLastHourMm), isDay,
+        windKmh: Math.round(c.wind_speed_10m), cloudCoverPct: Math.round(cloudCover), rainLastHourMm: round1(rainLastHourMm), isDay,
         isRaining: rainLastHourMm >= 0.1 || ["drizzle", "rain", "storm"].includes(condition.kind), condition,
+        consensus: agreed ? { models: agreed.models, agreeing: agreed.agreeing } : undefined,
       },
       past24hMm: round1(past), next24hMm: round1(next), rainChanceNext24hPct: Math.round(chance),
       etTodayMm: etByDate[today] === undefined ? undefined : round1(etByDate[today]),
@@ -143,6 +174,25 @@ export async function getWeather(env: Env, now = Date.now(), fetchFn: typeof fet
   }
 }
 
+/** Asks each model for its current reading. The ones that fail or have no data are left out, never fatal. */
+async function fetchModels(env: Env, fetchFn: typeof fetch): Promise<ModelNow[]> {
+  const ask = async (model: string): Promise<ModelNow | null> => {
+    const url = new URL(`${env.WEATHER_BASE_URL ?? "https://api.open-meteo.com"}/v1/forecast`);
+    url.searchParams.set("latitude", env.LATITUDE);
+    url.searchParams.set("longitude", env.LONGITUDE);
+    url.searchParams.set("timezone", env.TIMEZONE);
+    url.searchParams.set("models", model);
+    url.searchParams.set("current", "weather_code,precipitation,cloud_cover");
+    const res = await fetchFn(url, { signal: AbortSignal.timeout(5_000) });
+    if (!res.ok) return null;
+    const c = ((await res.json()) as { current?: Record<string, number | null> }).current;
+    if (typeof c?.weather_code !== "number" || typeof c.precipitation !== "number") return null;
+    return { code: c.weather_code, precipitationMm: c.precipitation, cloudCoverPct: c.cloud_cover ?? null };
+  };
+  const answers = await Promise.all(CONSENSUS_MODELS.map((m) => ask(m).catch(() => null)));
+  return answers.filter((a): a is ModelNow => a !== null);
+}
+
 async function load(env: Env, key: string, now: number, fetchFn: typeof fetch, store?: WeatherStore): Promise<WeatherBundle> {
   if (!cache || cache.key !== key) cache = ((await store?.get(STORE_KEY).catch(() => undefined)) as Cached | undefined) ?? null;
   if (cache && cache.key === key && now - cache.at < TTL_MS) return cache.bundle;
@@ -158,17 +208,19 @@ async function load(env: Env, key: string, now: number, fetchFn: typeof fetch, s
   url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration");
   try {
     // A cold isolate has no cache to fall back on, so one slow answer from Open-Meteo is retried once.
-    let raw: OpenMeteo | undefined;
-    for (let attempt = 1; !raw; attempt++) {
-      try {
-        const res = await fetchFn(url, { signal: AbortSignal.timeout(8_000) });
-        if (!res.ok) throw new Error(`open-meteo returned ${res.status}`);
-        raw = (await res.json()) as OpenMeteo;
-      } catch (e) {
-        if (attempt >= 2) throw e;
+    const fetchRaw = async () => {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const res = await fetchFn(url, { signal: AbortSignal.timeout(8_000) });
+          if (!res.ok) throw new Error(`open-meteo returned ${res.status}`);
+          return (await res.json()) as OpenMeteo;
+        } catch (e) {
+          if (attempt >= 2) throw e;
+        }
       }
-    }
-    const bundle = summarizeWeather(raw, now);
+    };
+    const [raw, models] = await Promise.all([fetchRaw(), fetchModels(env, fetchFn)]);
+    const bundle = summarizeWeather(raw, now, models);
     cache = { key, at: now, bundle };
     await store?.put(STORE_KEY, cache).catch(() => undefined);
     return bundle;

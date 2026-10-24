@@ -14,7 +14,10 @@ An animated cartoon garden follows the controller, not the buttons you press:
 
 The weather card shows:
 
-- current conditions, rain now / last 24 h / next 24 h, chance of rain, humidity, wind, water use today and soil moisture
+- current conditions, taken as the consensus of seven weather models (ECMWF, GFS, ICON, GEM, UK Met Office, ARPEGE and
+  JMA) rather than Open-Meteo's default blend, so one model drizzling on a sunny day is outvoted. It counts as raining only
+  when most models say so. If fewer than three models answer, the default blend is used. Hover the label to see the vote.
+- rain now / last 24 h / next 24 h, chance of rain, humidity, wind, water use today and soil moisture
 - a 7-day outlook with a badge per day: waters (with the planned cycles), skips for rain or weather, or no run. Tap a day for the times and reasons.
 - whether the next scheduled run will go ahead, and with how many cycles
 
