@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "40138c38bd7bea8cd44724d7ae238985d8a0da1c"
+      "revision": "10cfc904e587a25a928ba4d95125ebc262127e0e"
     }
   },
   "components": [
@@ -114,8 +114,8 @@
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 318,
-          "end_line": 359,
+          "line": 319,
+          "end_line": 360,
           "label": "supervise: one-hour limits"
         },
         {
@@ -429,7 +429,7 @@
       "items": [
         "A scheduled run reads the cached Open-Meteo forecast. Rain, wind, frost or wet soil can skip it or change the number of cycles",
         "Current conditions are a vote of seven forecast models, so one model drizzling on a clear day is outvoted",
-        "A rain skip leaves a note in the Controller. Once the look-ahead has passed, the cron tick checks how much rain fell and waters in daylight if the rain did not come, unless the next run is close"
+        "After a rain skip, the cron tick checks once the look-ahead has passed how much rain fell, and waters in daylight if the rain did not come, unless the next run is close. If the last run was skipped for rain and none fell, the next scheduled run ignores the rain forecast"
       ]
     },
     {
