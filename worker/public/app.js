@@ -320,7 +320,7 @@ function renderWeather() {
       <div class="water"><span class="wi">${water.icon}</span><span class="wl">${water.short}</span></div></button>`;
   }).join("");
   box.innerHTML = `
-    <div class="wx-now"><div class="wx-icon">${c.condition.icon}</div><div><div class="wx-temp">${Math.round(c.temperatureC)}°</div><div class="wx-label">${c.condition.label}<span class="muted"> · feels ${Math.round(c.feelsLikeC)}°</span></div></div></div>
+    <div class="wx-now"><div class="wx-icon">${c.condition.icon}</div><div><div class="wx-temp">${Math.round(c.temperatureC)}°</div><div class="wx-label"${c.consensus ? ` title="${c.consensus.agreeing} of ${c.consensus.models} weather models agree"` : ""}>${c.condition.label}<span class="muted"> · feels ${Math.round(c.feelsLikeC)}°</span></div></div></div>
     <div class="tiles">
       <div class="tile ${c.rainLastHourMm > 0 ? "wet" : ""}"><span>Rain now</span><b>${mm(c.rainLastHourMm)}</b></div>
       <div class="tile"><span>Last 24 h</span><b>${mm(weather.past24hMm)}</b></div>
