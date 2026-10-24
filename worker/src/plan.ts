@@ -16,6 +16,7 @@ export interface RainConfig {
   probabilityPct: number; // skip if any hour in the window is at or above this
   mm: number; // skip if forecast total in the window is at or above this
   lookaheadHours: number;
+  catchUp: boolean; // after a rain skip, check whether the rain came and water if it did not
 }
 
 /** Scales a scheduled run's number of cycles by the weather. Your on and soak minutes are never changed. */
@@ -56,7 +57,7 @@ export const defaultConfig: Config = {
     { days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 },
     { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30 },
   ],
-  rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6 },
+  rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6, catchUp: true },
   smart: {
     enabled: true,
     referenceEtMm: 4.5,
@@ -83,7 +84,7 @@ export function normalizeConfig(stored: unknown): Config {
   };
 }
 
-export type Trigger = "schedule" | "manual" | "google";
+export type Trigger = "schedule" | "catch-up" | "manual" | "google";
 
 export interface RunState {
   phase: "idle" | "watering" | "soaking";
@@ -160,6 +161,7 @@ export function validateConfig(input: unknown): Config {
       probabilityPct: num(r.probabilityPct, "rain.probabilityPct", 0, 100),
       mm: num(r.mm, "rain.mm", 0, 100),
       lookaheadHours: num(r.lookaheadHours, "rain.lookaheadHours", 1, 48),
+      catchUp: r.catchUp !== false,
     },
     smart,
   };

@@ -274,7 +274,8 @@
           <label class="field"><span>Chance ≥</span><div class="num"><input type="number" id="probabilityPct" min="0" max="100" inputmode="numeric"><em>%</em></div></label>
           <label class="field"><span>Or rain ≥</span><div class="num"><input type="number" id="mm" min="0" step="any" inputmode="decimal"><em>mm</em></div></label>
         </div>
-        <p class="muted small">Only scheduled runs check the forecast. Starting by hand always waters. Set mm to 0 to ignore the amount.</p>
+        <label class="switch"><input type="checkbox" id="catchUp"><span>Water later if the rain does not come</span></label>
+        <p class="muted small">Only scheduled runs check the forecast. Starting by hand always waters. Set mm to 0 to ignore the amount. After a rain skip, once the look-ahead has passed, it checks how much rain fell and waters in daylight if it was under the mm limit. It never runs close to your next start time.</p>
 
         <h3>Weather smarts</h3>
         <label class="switch"><input type="checkbox" id="smartEnabled"><span>Scale the number of cycles by the weather</span></label>
