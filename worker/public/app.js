@@ -101,7 +101,7 @@ const cyclesLabel = (n) => `${n} cycle${n === 1 ? "" : "s"}`;
 function demoData(name) {
   const now = Date.now();
   const config = { enabled: true, onMinutes: 10, soakMinutes: 5, cycles: 3, schedules: [{ days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30 }, { days: [0, 1, 2, 3, 4, 5, 6], at: "clock", time: "15:00", onlyIfEtMm: 5.5 }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6, catchUp: true },
-    smart: { enabled: true, referenceEtMm: 4.5, cropFactor: 1, minPercent: 25, maxPercent: 150, soilDryBelow: 0.2, soilWetAbove: 0.35, wind: { enabled: true, maxKmh: 30 }, frost: { enabled: true, belowC: 2 } } };
+    smart: { enabled: true, referenceEtMm: 4.5, cropFactor: 1, minPercent: 25, maxPercent: 150, soilDryBelow: 0.2, soilWetAbove: 0.4, wind: { enabled: true, maxKmh: 30 }, frost: { enabled: true, belowC: 2 } } };
   const idle = { phase: "idle", cycle: 0, cycles: 0, onSeconds: 0, soakSeconds: 0, phaseStartedAt: 0, phaseEndsAt: 0 };
   const running = (phase, left) => ({ phase, cycle: 2, cycles: 3, onSeconds: 600, soakSeconds: 300, phaseStartedAt: now - ((phase === "watering" ? 600 : 300) - left) * 1000, phaseEndsAt: now + left * 1000 });
   const state = name === "watering" ? running("watering", 372) : name === "soaking" ? running("soaking", 171) : idle;

@@ -39,8 +39,8 @@ describe("smartPlan scaling", () => {
   });
 
   it("eases off as the soil dries from wet to dry", () => {
-    // halfway between 0.20 (dry) and 0.35 (wet): half the demand
-    expect(smartPlan(cfg(), 4, { etMm: 4.5, soilMoisture: 0.275 })).toMatchObject({ percent: 50, cycles: 2 });
+    // halfway between 0.20 (dry) and 0.40 (wet): half the demand
+    expect(smartPlan(cfg(), 4, { etMm: 4.5, soilMoisture: 0.3 })).toMatchObject({ percent: 50, cycles: 2 });
   });
 
   it("scales ET by the crop factor", () => {
