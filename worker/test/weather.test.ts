@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig, nextRunAt } from "../src/plan";
-import { describeWeather, getWeather, summarizeWeather } from "../src/weather";
+import { consensusNow, describeWeather, getWeather, summarizeWeather } from "../src/weather";
 import type { Env } from "../src/env";
 
 describe("nextRunAt", () => {
@@ -108,9 +108,12 @@ describe("getWeather", () => {
     daily: { time: ["2026-10-21"], weather_code: [0], temperature_2m_max: [22], temperature_2m_min: [11], precipitation_sum: [0], precipitation_probability_max: [0] },
   };
 
+  const isModel = (url: URL) => url.searchParams.has("models"); // the per-model requests, as opposed to the main one
+
   it("retries once when the first request times out", async () => {
     let calls = 0;
-    const fetchFn = (async () => {
+    const fetchFn = (async (url: URL) => {
+      if (isModel(url)) return new Response("{}");
       if (++calls === 1) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
       return new Response(JSON.stringify(raw));
     }) as unknown as typeof fetch;
@@ -135,7 +138,7 @@ describe("getWeather", () => {
     // a restarted Worker has no memory cache, so poke it with another place and come back
     await getWeather({ ...env, LATITUDE: "2" } as Env, now, (async () => ok()) as unknown as typeof fetch);
     let calls = 0;
-    const counting = (async () => { calls++; return ok(); }) as unknown as typeof fetch;
+    const counting = (async () => { calls++; return ok(); }) as unknown as typeof fetch; // any request at all counts here
     const { data } = await getWeather(e, now + 20 * 60_000, counting, store);
     expect(calls).toBe(0);
     expect(data.stale).toBeUndefined();
@@ -151,9 +154,68 @@ describe("getWeather", () => {
 
   it("shares one request between callers that arrive together", async () => {
     let calls = 0;
-    const fetchFn = (async () => { calls++; await new Promise((r) => setTimeout(r, 5)); return ok(); }) as unknown as typeof fetch;
+    const fetchFn = (async (url: URL) => { if (!isModel(url)) calls++; await new Promise((r) => setTimeout(r, 5)); return ok(); }) as unknown as typeof fetch;
     const e = { ...env, LATITUDE: "4" } as Env;
     await Promise.all([getWeather(e, now, fetchFn), getWeather(e, now, fetchFn), getWeather(e, now, fetchFn)]);
     expect(calls).toBe(1);
+  });
+});
+
+describe("consensus of the models", () => {
+  const dry = (code = 0, cloud = 10): { code: number; precipitationMm: number; cloudCoverPct: number | null } => ({ code, precipitationMm: 0, cloudCoverPct: cloud });
+  const wet = (code = 53) => ({ code, precipitationMm: 0.2, cloudCoverPct: 25 });
+
+  it("outvotes a couple of models that drizzle on a clear day", () => {
+    const c = consensusNow([wet(51), wet(53), dry(0), dry(0), dry(1), dry(0), dry(0)], true)!;
+    expect(c.condition.kind).toBe("clear");
+    expect(c.wet).toBe(false);
+    expect(c.rainMm).toBe(0);
+    expect(c).toMatchObject({ models: 7, agreeing: 5 });
+  });
+
+  it("calls it wet when most models agree, using the middle wet code", () => {
+    const c = consensusNow([wet(51), wet(53), wet(61), dry(2), dry(3)], true)!;
+    expect(c.wet).toBe(true);
+    expect(c.condition.kind).toBe("drizzle");
+    expect(c.agreeing).toBe(3);
+  });
+
+  it("takes the median cloud cover and ignores models that have none", () => {
+    expect(consensusNow([dry(1, 10), dry(1, 40), dry(1, 90), { ...dry(1), cloudCoverPct: null }], true)!.cloudCoverPct).toBe(40);
+  });
+
+  it("gives no answer when too few models reply", () => {
+    expect(consensusNow([dry(), dry()], true)).toBeNull();
+  });
+
+  it("makes the shown condition and isRaining follow the consensus, not the blend", () => {
+    const raw = {
+      utc_offset_seconds: 0,
+      current: { time: "2026-10-21T00:00", temperature_2m: 29, apparent_temperature: 28, relative_humidity_2m: 30, precipitation: 0.2, weather_code: 53, cloud_cover: 53, wind_speed_10m: 10, is_day: 1 },
+      hourly: { time: ["2026-10-21T00:00"], precipitation: [0], precipitation_probability: [0] },
+      daily: { time: ["2026-10-21"], weather_code: [1], temperature_2m_max: [30], temperature_2m_min: [15], precipitation_sum: [0], precipitation_probability_max: [0] },
+    };
+    expect(summarizeWeather(raw, 0).data.current).toMatchObject({ isRaining: true, condition: { kind: "drizzle" } }); // the blend alone
+    const { current } = summarizeWeather(raw, 0, [wet(51), wet(53), dry(0, 5), dry(0, 8), dry(1, 39), dry(1, 47), dry(0, 14)]).data;
+    expect(current).toMatchObject({ isRaining: false, rainLastHourMm: 0, cloudCoverPct: 25, condition: { kind: "clear" }, consensus: { models: 7, agreeing: 5 } });
+  });
+
+  it("is built from the models' own answers by getWeather, and survives them failing", async () => {
+    const env = { LATITUDE: "-37.72", LONGITUDE: "145", TIMEZONE: "Australia/Melbourne", WEATHER_BASE_URL: "https://consensus.test" } as Env;
+    const mainRaw = {
+      utc_offset_seconds: 39600,
+      current: { time: "2026-10-21T12:00", temperature_2m: 29, apparent_temperature: 28, relative_humidity_2m: 30, precipitation: 0.2, weather_code: 53, cloud_cover: 53, wind_speed_10m: 10, is_day: 1 },
+      hourly: { time: ["2026-10-21T12:00"], precipitation: [0], precipitation_probability: [0] },
+      daily: { time: ["2026-10-21"], weather_code: [1], temperature_2m_max: [30], temperature_2m_min: [15], precipitation_sum: [0], precipitation_probability_max: [0] },
+    };
+    const answers: Record<string, object> = { ecmwf_ifs: { weather_code: 53, precipitation: 0.2, cloud_cover: 23 }, gem_global: { weather_code: 51, precipitation: 0.1, cloud_cover: 20 } };
+    const fetchFn = (async (url: URL) => {
+      const m = url.searchParams.get("models");
+      if (!m) return new Response(JSON.stringify(mainRaw));
+      if (m === "jma_gsm") throw new Error("down");
+      return new Response(JSON.stringify({ current: answers[m] ?? { weather_code: 0, precipitation: 0, cloud_cover: 10 } }));
+    }) as unknown as typeof fetch;
+    const { data } = await getWeather(env, Date.UTC(2026, 9, 21, 1, 0), fetchFn);
+    expect(data.current).toMatchObject({ isRaining: false, condition: { kind: "clear" }, consensus: { models: 6, agreeing: 4 } });
   });
 });
