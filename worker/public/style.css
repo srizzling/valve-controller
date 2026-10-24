@@ -384,7 +384,7 @@ button.day { font: inherit; color: inherit; cursor: pointer; }
 .sched .lead input { padding-left: 12px; }
 
 button.chip { font: inherit; font-weight: 600; cursor: default; }
-button.chip.action { cursor: pointer; }
+button.chip.action { cursor: pointer; pointer-events: auto; } /* .hud-bottom ignores the pointer so the scene stays clickable; the chip must not */
 .reconnect { max-width: 340px; padding: 18px; color: inherit; }
 .reconnect::backdrop { background: #000a; }
 .reconnect-qr { width: 240px; max-width: 100%; margin: 12px auto; border-radius: 8px; overflow: hidden; }
