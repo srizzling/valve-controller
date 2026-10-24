@@ -23,7 +23,7 @@ const HOUR = 3_600_000;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 const avg = (a?: number | null, b?: number | null) => (typeof a === "number" && typeof b === "number" ? (a + b) / 2 : typeof a === "number" ? a : typeof b === "number" ? b : undefined);
 
-function localDate(ts: number, timeZone: string): string {
+export function localDate(ts: number, timeZone: string): string {
   const p = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts));
   return p; // en-CA formats as YYYY-MM-DD
 }

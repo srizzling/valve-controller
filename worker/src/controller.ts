@@ -1,4 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
+import { catchUpStep, forcedAfterRainSkip, newCatchUp } from "./catchup";
+import type { CatchUp } from "./catchup";
 import type { Env } from "./env";
 import { ping } from "./heartbeat";
 import type { Signal } from "./heartbeat";
@@ -7,6 +9,7 @@ import { advance, dueEntry, dueSchedule, defaultConfig, idleState, nextRunAt, no
 import type { Config, RunState, Trigger } from "./plan";
 import { placeOf } from "./place";
 import { rainVerdict } from "./rain";
+import type { Forecast } from "./rain";
 import { extraRunWanted, inputsAt, smartPlan } from "./smart";
 import { MAX_OPEN_MS, MAX_RUN_MS, runOverdue, watchOpen } from "./supervisor";
 import { TuyaAuthError } from "./tuya";
@@ -150,10 +153,25 @@ export class Controller extends DurableObject<Env> {
         await this.preflight(upcoming.slice(-5));
       }
       const due = dueEntry(config, now, placeOf(this.env));
-      if (!due || (await this.ctx.storage.get("lastScheduleKey")) === due.key) return;
-      await this.ctx.storage.put("lastScheduleKey", due.key);
-      await this.doStart("schedule", due.entry.onlyIfEtMm);
+      if (due && (await this.ctx.storage.get("lastScheduleKey")) !== due.key) {
+        await this.ctx.storage.put("lastScheduleKey", due.key);
+        await this.doStart("schedule", due.entry.onlyIfEtMm);
+        return;
+      }
+      await this.catchUp(config, now);
     });
+  }
+
+  /** A run skipped for rain: once the rain was due, water if it did not come. */
+  private async catchUp(config: Config, now: number): Promise<void> {
+    const pending = await this.ctx.storage.get<CatchUp>("catchUp");
+    if (!pending) return;
+    let forecast: Forecast | undefined;
+    if (config.enabled && now >= pending.checkAt && now < pending.expiresAt) forecast = (await this.weather(now).catch(() => undefined))?.forecast;
+    const step = config.enabled ? catchUpStep(pending, forecast, config.rain, placeOf(this.env), now) : ({ do: "drop" } as const);
+    if (step.do === "wait") return;
+    await this.ctx.storage.delete("catchUp");
+    if (step.do === "run") await this.doStart("catch-up", undefined, step.note);
   }
 
   async alarm(): Promise<void> {
@@ -204,7 +222,7 @@ export class Controller extends DurableObject<Env> {
   }
 
   /** `extraRunEtMm`: set for a start time that is an extra run, which only goes ahead when today's ET is at least that. */
-  private async doStart(trigger: Trigger, extraRunEtMm?: number): Promise<{ ok: boolean; message: string }> {
+  private async doStart(trigger: Trigger, extraRunEtMm?: number, catchUpNote?: string): Promise<{ ok: boolean; message: string }> {
     if ((await this.getState()).phase !== "idle") return { ok: false, message: "already running" };
     const config = await this.getConfig();
     const now = Date.now();
@@ -212,8 +230,8 @@ export class Controller extends DurableObject<Env> {
     let cycles = config.cycles;
     let scaling = "";
 
-    // Only scheduled runs use the forecast; starting by hand or by voice is deliberate and runs exactly what you set.
-    if (trigger === "schedule") {
+    // Only scheduled runs (and their make-up) use the forecast; starting by hand or by voice is deliberate and runs exactly what you set.
+    if (trigger === "schedule" || trigger === "catch-up") {
       let weather: WeatherBundle | undefined;
       let weatherProblem = "";
       try {
@@ -229,16 +247,21 @@ export class Controller extends DurableObject<Env> {
       if (!weather) {
         rainNote = ` Weather check failed (${weatherProblem}), so your normal cycles apply.`;
       } else {
-        if (config.rain.enabled) {
+        if (catchUpNote) rainNote = ` ${catchUpNote}`; // the rain check was made just before this
+        if (trigger === "schedule" && config.rain.enabled) {
           try {
             const verdict = rainVerdict(weather.forecast, config.rain, now);
-            if (verdict.skip) {
+            const forced = verdict.skip ? forcedAfterRainSkip((await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [], weather.forecast, config.rain, now) : null;
+            if (verdict.skip && !forced) {
               await this.record({ at: now, trigger, outcome: "skipped-rain", wateredSeconds: 0, note: verdict.reason });
-              await notify(this.env, { title: "Valve: skipped for rain", message: `Scheduled run skipped. ${verdict.reason}.`, tags: ["cloud_with_rain"] });
+              const pending = extraRunEtMm === undefined && config.rain.catchUp ? newCatchUp(now, config.rain, nextRunAt(config, now, placeOf(this.env))) : null;
+              if (pending) await this.ctx.storage.put("catchUp", pending);
+              const later = pending ? ` After ${this.clock(pending.checkAt)} it checks whether the rain came and waters if not.` : "";
+              await notify(this.env, { title: "Valve: skipped for rain", message: `Scheduled run skipped. ${verdict.reason}.${later}`, tags: ["cloud_with_rain"] });
               await this.heartbeat(trigger, "ok", `skipped for rain: ${verdict.reason}`);
               return { ok: true, message: `skipped: ${verdict.reason}` };
             }
-            rainNote = ` Forecast: ${verdict.reason}.`;
+            rainNote = forced ? ` Forecast: ${verdict.reason}. ${forced}` : ` Forecast: ${verdict.reason}.`;
           } catch (e) {
             rainNote = ` Rain check failed (${message(e)}), watering anyway.`;
           }
@@ -247,7 +270,7 @@ export class Controller extends DurableObject<Env> {
         if (!smart.run) {
           const why = smart.reasons.join(" ");
           await this.record({ at: now, trigger, outcome: "skipped-weather", wateredSeconds: 0, note: why });
-          await notify(this.env, { title: "Valve: skipped for the weather", message: `Scheduled run skipped. ${why}`, tags: ["warning"] });
+          await notify(this.env, { title: "Valve: skipped for the weather", message: `${trigger === "schedule" ? "Scheduled" : "Catch-up"} run skipped. ${why}`, tags: ["warning"] });
           await this.heartbeat(trigger, "ok", `skipped for the weather: ${why}`);
           return { ok: true, message: `skipped: ${why}` };
         }
@@ -269,10 +292,15 @@ export class Controller extends DurableObject<Env> {
     }
     await this.ctx.storage.put("state", run);
     await this.ctx.storage.setAlarm(run.phaseEndsAt);
+    await this.ctx.storage.delete("catchUp"); // this run is the make-up for any rain skip still waiting
     const plan = `${run.cycles} x ${mins(run.onSeconds)} on, ${mins(run.soakSeconds)} soak between.`;
     await notify(this.env, { title: "Valve: started", message: `${trigger} run. ${plan}${rainNote}${scaling}`, tags: ["droplet"] });
     await this.heartbeat(trigger, "start", plan);
     return { ok: true, message: `started: ${plan}` };
+  }
+
+  private clock(at: number): string {
+    return new Intl.DateTimeFormat("en-AU", { timeZone: this.env.TIMEZONE, hour: "numeric", minute: "2-digit" }).format(new Date(at));
   }
 
   private async abort(state: RunState, note: string): Promise<void> {
