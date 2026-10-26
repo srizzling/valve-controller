@@ -231,7 +231,7 @@ describe("saved configs and the new settings", () => {
   });
 
   it("lets startRun override the number of cycles without touching the minutes", () => {
-    const run = startRun(defaultConfig, "schedule", 0, 5);
+    const run = startRun({ ...defaultConfig, onMinutes: 10, soakMinutes: 5 }, "schedule", 0, 5);
     expect(run).toMatchObject({ cycles: 5, onSeconds: 600, soakSeconds: 300 });
   });
 });
