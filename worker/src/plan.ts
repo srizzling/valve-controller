@@ -50,9 +50,9 @@ export interface Place {
 
 export const defaultConfig: Config = {
   enabled: true,
-  onMinutes: 10,
+  onMinutes: 5,
   soakMinutes: 5,
-  cycles: 3,
+  cycles: 2,
   schedules: [
     { days: [0, 1, 2, 3, 4, 5, 6], at: "dawn", time: "00:00", beforeSunriseMin: 30 },
     { days: [0, 1, 2, 3, 4, 5, 6], at: "dusk", time: "00:00", afterSunsetMin: -30 },

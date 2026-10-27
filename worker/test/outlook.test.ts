@@ -6,7 +6,7 @@ import type { Forecast } from "../src/rain";
 
 const HOUR = 3_600_000;
 const tz = { timeZone: "Australia/Melbourne", latitude: -37.72, longitude: 145 }; // UTC+11 in October
-const config = { ...defaultConfig, schedules: [{ days: [3, 4], time: "06:00" }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6, catchUp: true } };
+const config = { ...defaultConfig, cycles: 3, schedules: [{ days: [3, 4], time: "06:00" }], rain: { enabled: true, probabilityPct: 50, mm: 1, lookaheadHours: 6, catchUp: true } };
 // Wed 2026-10-21 05:00 local = 2026-10-20 18:00 UTC
 const now = Date.UTC(2026, 9, 20, 18, 0);
 const run = (date: string) => scheduledRunsOn(config, date, tz)[0];
