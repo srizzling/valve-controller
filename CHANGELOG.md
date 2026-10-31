@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/srizzling/valve-controller/compare/valve-controller-v0.2.0...valve-controller-v0.3.0) (2026-10-31)
+
+
+### Features
+
+* **camera:** garden camera leak checks and timelapse ([#17](https://github.com/srizzling/valve-controller/issues/17)) ([5ab8af5](https://github.com/srizzling/valve-controller/commit/5ab8af5e9ef472cb973dd17c33cb8c01bfc86dcc))
+
+
+### Bug Fixes
+
+* **camera:** pass camera_scene to the Worker, document the Eufy bridge ([#19](https://github.com/srizzling/valve-controller/issues/19)) ([c78e825](https://github.com/srizzling/valve-controller/commit/c78e8250dda67100281733f2839bd6cb45e5acbd))
+* **schedule:** water less by default ([#15](https://github.com/srizzling/valve-controller/issues/15)) ([6305212](https://github.com/srizzling/valve-controller/commit/63052129a01cfb883796798bcb0d48c22cc80d85))
+
 ## [0.2.0](https://github.com/srizzling/valve-controller/compare/valve-controller-v0.1.0...valve-controller-v0.2.0) (2026-10-24)
 
 
