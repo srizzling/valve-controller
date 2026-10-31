@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "30c084e53c60833a97cced2661c8c57c998efa5c"
+      "revision": "1cfe46a05f3fc8089ec0b09b773eda6b02bc3efb"
     }
   },
   "components": [
@@ -29,8 +29,8 @@
       "sources": [
         {
           "path": "worker/public/app.js",
-          "line": 437,
-          "end_line": 447,
+          "line": 497,
+          "end_line": 509,
           "label": "UI calls /api"
         }
       ]
@@ -39,7 +39,7 @@
       "id": "access",
       "type": "security",
       "label": "Cloudflare Access",
-      "sublabel": "login + JWT",
+      "sublabel": "login + JWT, service token",
       "pos": [
         262,
         170
@@ -51,8 +51,8 @@
       "sources": [
         {
           "path": "worker/src/access.ts",
-          "line": 48,
-          "end_line": 59,
+          "line": 49,
+          "end_line": 65,
           "label": "checkAccess"
         }
       ],
@@ -75,13 +75,13 @@
         {
           "path": "worker/src/index.ts",
           "line": 22,
-          "end_line": 30,
-          "label": "CSRF check, Access gate, routes"
+          "end_line": 33,
+          "label": "CSRF, Access gate, service-token limits, routes"
         },
         {
           "path": "worker/src/index.ts",
-          "line": 106,
-          "end_line": 108,
+          "line": 139,
+          "end_line": 141,
           "label": "Security headers, Google routes"
         },
         {
@@ -108,21 +108,21 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 177,
-          "end_line": 221,
+          "line": 311,
+          "end_line": 357,
           "label": "alarm: cycle/soak"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 319,
-          "end_line": 360,
+          "line": 454,
+          "end_line": 495,
           "label": "supervise: one-hour limits"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 166,
-          "end_line": 175,
-          "label": "catch-up after a rain skip"
+          "line": 193,
+          "end_line": 250,
+          "label": "keep a camera frame, check it, alert on a leak"
         }
       ]
     },
@@ -211,8 +211,8 @@
         },
         {
           "path": "worker/src/index.ts",
-          "line": 114,
-          "end_line": 116,
+          "line": 145,
+          "end_line": 147,
           "label": "scheduled -> tick"
         }
       ]
@@ -277,7 +277,7 @@
       "id": "ntfy",
       "type": "external",
       "label": "ntfy",
-      "sublabel": "run alerts",
+      "sublabel": "run + leak alerts (with photo)",
       "pos": [
         790,
         330
@@ -289,8 +289,8 @@
       "sources": [
         {
           "path": "worker/src/ntfy.ts",
-          "line": 11,
-          "end_line": 22,
+          "line": 12,
+          "end_line": 30,
           "label": "notify"
         }
       ]
@@ -314,6 +314,50 @@
           "line": 15,
           "end_line": 23,
           "label": "ping"
+        }
+      ]
+    },
+    {
+      "id": "camera",
+      "type": "external",
+      "label": "Camera script",
+      "sublabel": "homelab, Eufy via go2rtc",
+      "pos": [
+        262,
+        330
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "sources": [
+        {
+          "path": "scripts/camera-pusher.mjs",
+          "line": 79,
+          "end_line": 89,
+          "label": "poll /camera/wanted, post the frame"
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "type": "cloud",
+      "label": "Claude",
+      "sublabel": "reads each photo",
+      "pos": [
+        1070,
+        330
+      ],
+      "size": [
+        120,
+        60
+      ],
+      "sources": [
+        {
+          "path": "worker/src/camera.ts",
+          "line": 125,
+          "end_line": 142,
+          "label": "askVision: forced tool call"
         }
       ]
     }
@@ -400,6 +444,20 @@
       "to": "hc",
       "label": "heartbeat",
       "variant": "dashed"
+    },
+    {
+      "id": "camera-to-access",
+      "from": "camera",
+      "to": "access",
+      "label": "photos (service token)",
+      "variant": "security"
+    },
+    {
+      "id": "controller-to-claude",
+      "from": "controller",
+      "to": "claude",
+      "label": "is this a leak?",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -447,6 +505,16 @@
         "infra/ (Terraform) creates the Worker, cron, Access, the Zero Trust team address and the check; GitHub Actions applies it on every merge to main",
         "Terraform state is kept in a private R2 bucket, never in git",
         "Nothing runs at home: the valve only talks to Tuya's cloud"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "The garden camera",
+      "items": [
+        "The Worker decides when it wants a photo: 30 seconds into each watering period, a minute after a run, once a day, or on a button press",
+        "A script on the homelab polls for that, takes one frame from the Eufy camera and posts it, signed in with an Access service token that can reach only those two routes",
+        "A Claude model looks at each frame and a leak sends an ntfy alert with the photo; daily frames become a timelapse",
+        "If the script stops asking for 15 minutes the Worker says so, because leak checks silently stop while it is down"
       ]
     }
   ]
