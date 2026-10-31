@@ -21,6 +21,7 @@ function fakeStorage() {
   };
 }
 
+const hostOf = (url: string) => new URL(url).host;
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]).buffer;
 const baseEnv = { TIMEZONE: "Australia/Melbourne", LATITUDE: "-37.81", LONGITUDE: "144.96", NTFY_URL: "https://ntfy.test", NTFY_TOPIC: "t", ANTHROPIC_API_KEY: "k", ANTHROPIC_BASE_URL: "https://claude.test" };
 
@@ -29,11 +30,11 @@ function make(verdict: object | null) {
   const calls: { url: string; method?: string; headers: Headers }[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
     calls.push({ url, method: init.method, headers: new Headers(init.headers) });
-    if (url.startsWith("https://claude.test")) return verdict ? Response.json({ content: [{ type: "tool_use", name: "report", input: verdict }] }) : new Response("busy", { status: 529 });
+    if (hostOf(url) === "claude.test") return verdict ? Response.json({ content: [{ type: "tool_use", name: "report", input: verdict }] }) : new Response("busy", { status: 529 });
     return new Response("ok");
   });
   const c = new Controller({ storage } as never, baseEnv as never);
-  return { c, storage, calls, ntfy: () => calls.filter((x) => x.url.startsWith("https://ntfy.test")) };
+  return { c, storage, calls, ntfy: () => calls.filter((x) => hostOf(x.url) === "ntfy.test") };
 }
 
 afterEach(() => vi.unstubAllGlobals());
