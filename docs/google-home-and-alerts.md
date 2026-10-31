@@ -25,6 +25,7 @@ ntfy messages tell you what happened. These catch what didn't:
 | Valve offline | ntfy, same check | Tuya reports the valve offline: check its Wi-Fi and batteries |
 | Low battery | ntfy, same check | the valve reports 20% or less |
 | Open while idle | ntfy, same check, priority 5 | the valve is open with no run active |
+| Possible leak | ntfy, priority 5, with the photo | the [camera](camera.md) shows a fault while watering or after a run |
 
 Only **scheduled** runs report to healthchecks.io: `/start` when a run begins, a success ping when it finishes or is
 skipped for rain (that is a run that did its job), and `/fail` when it errors. A run that starts and never finishes shows

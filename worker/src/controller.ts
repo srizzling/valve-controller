@@ -1,4 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
+import { AFTER_DELAY_MS, DEFAULT_TIMELAPSE_HOUR, MAX_FRAME_BYTES, askVision, duringKey, isJpeg, noMarks, scriptStale, wantedFrame } from "./camera";
+import type { CameraMarks, FrameKind, FrameMeta } from "./camera";
 import { catchUpStep, forcedAfterRainSkip, newCatchUp } from "./catchup";
 import type { CatchUp } from "./catchup";
 import type { Env } from "./env";
@@ -10,7 +12,8 @@ import type { Config, RunState, Trigger } from "./plan";
 import { placeOf } from "./place";
 import { rainVerdict } from "./rain";
 import type { Forecast } from "./rain";
-import { extraRunWanted, inputsAt, smartPlan } from "./smart";
+import { extraRunWanted, inputsAt, localDate, smartPlan } from "./smart";
+import { sunTimes } from "./sun";
 import { MAX_OPEN_MS, MAX_RUN_MS, runOverdue, watchOpen } from "./supervisor";
 import { TuyaAuthError } from "./tuya";
 import { getWeather } from "./weather";
@@ -35,6 +38,20 @@ export interface Status {
   history: HistoryEntry[];
 }
 
+export interface CameraDay {
+  date: string;
+  plant?: string; // the model's note on how the plant looked that day
+}
+
+export interface CameraOverview {
+  latest: FrameMeta | null;
+  leak: FrameMeta | null; // the last frame that looked like a fault
+  days: CameraDay[]; // oldest first
+  checks: boolean; // whether frames are checked for leaks (an API key is set)
+  lastPollAt: number | null; // when the camera script last asked what to capture
+}
+
+const DAYS_KEPT = 800;
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 30_000;
 const HISTORY_LIMIT = 20;
@@ -127,6 +144,7 @@ export class Controller extends DurableObject<Env> {
         await this.ctx.storage.put("state", idleState);
         const watered = wateredSoFar(state, now);
         await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "stopped", wateredSeconds: watered, note });
+        await this.cameraRunEnded(state.startedAt, now);
         if (ok) await notify(this.env, { title: "Valve: stopped", message: `Stopped after ${mins(watered)} of watering.`, tags: ["octagonal_sign"] });
         await this.heartbeat(state.trigger, "ok", note); // stopped on purpose, so not a missing run
       }
@@ -134,10 +152,126 @@ export class Controller extends DurableObject<Env> {
     });
   }
 
+  // ───────────── the garden camera ─────────────
+
+  private async getMarks(): Promise<CameraMarks> {
+    return { ...noMarks, ...(await this.ctx.storage.get<Partial<CameraMarks>>("cam:marks")) };
+  }
+
+  private async changeMarks(change: (m: CameraMarks) => CameraMarks): Promise<void> {
+    await this.serial(async () => this.ctx.storage.put("cam:marks", change(await this.getMarks())));
+  }
+
+  /** A run just ended: ask for a frame a minute from now, to see whether anything is still flowing. */
+  private async cameraRunEnded(startedAt: number, now: number): Promise<void> {
+    await this.ctx.storage.put("cam:marks", { ...(await this.getMarks()), afterDue: { key: String(startedAt), at: now + AFTER_DELAY_MS } });
+  }
+
+  /** What the camera script should capture right now, if anything. */
+  async cameraWanted(): Promise<FrameKind | null> {
+    const now = Date.now();
+    // noted at most once a minute: the script asks every few seconds and this only has to notice when it stops
+    if (now - ((await this.ctx.storage.get<number>("cam:polled")) ?? 0) > 60_000) await this.ctx.storage.put("cam:polled", now);
+    const place = placeOf(this.env);
+    const hour = Number(this.env.CAMERA_TIMELAPSE_HOUR);
+    return wantedFrame({
+      now,
+      state: await this.getState(),
+      marks: await this.getMarks(),
+      timeZone: this.env.TIMEZONE,
+      timelapseHour: Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : DEFAULT_TIMELAPSE_HOUR,
+      daylightEnds: sunTimes(localDate(now, place.timeZone), place.latitude, place.longitude)?.sunset,
+    });
+  }
+
+  /** "Take a photo now" from the UI: the camera script picks it up on its next poll. */
+  cameraRequest(): Promise<void> {
+    return this.changeMarks((m) => ({ ...m, manualAt: Date.now() }));
+  }
+
+  /** Keep a frame the camera script sent, have the model look at it, and shout if it shows a fault. */
+  async cameraFrame(kind: FrameKind, image: ArrayBuffer): Promise<FrameMeta> {
+    const jpeg = new Uint8Array(image);
+    if (jpeg.length > MAX_FRAME_BYTES) throw new Error(`frame is ${jpeg.length} bytes, over the ${MAX_FRAME_BYTES} limit`);
+    if (!isJpeg(jpeg)) throw new Error("frame is not a JPEG");
+    const now = Date.now();
+    const today = localDate(now, this.env.TIMEZONE);
+    const state = await this.getState();
+    const meta: FrameMeta = { at: now, kind, valveOpen: state.phase === "watering" };
+
+    // Mark the request answered before the slow model call, so the script is not asked for the same frame again.
+    await this.changeMarks((m) => {
+      if (kind === "during" && state.phase === "watering") return { ...m, duringDone: duringKey(state) };
+      if (kind === "after") return { ...m, afterDue: null };
+      if (kind === "manual") return { ...m, manualAt: null };
+      if (kind === "timelapse") return { ...m, timelapseDate: today };
+      return m;
+    });
+
+    try {
+      meta.verdict = await askVision(this.env, kind, meta.valveOpen, jpeg);
+    } catch (e) {
+      meta.error = message(e);
+      console.error("camera check failed", meta.error);
+    }
+
+    await this.ctx.storage.put({ "cam:latest": meta, "cam:latest:img": image });
+    if (kind === "timelapse") await this.keepDay(today, image, meta.verdict?.plant);
+    if (meta.verdict?.leak) {
+      await this.ctx.storage.put({ "cam:leak": meta, "cam:leak:img": image });
+      const key = `${kind}:${state.startedAt || today}`;
+      const marks = await this.getMarks();
+      if (marks.alerted !== key) {
+        await this.changeMarks((m) => ({ ...m, alerted: key }));
+        const next = meta.valveOpen ? " The valve is open: tap Stop in the UI to close it." : kind === "after" ? " The run has ended, so the valve may be stuck open." : "";
+        await notify(this.env, { title: "Valve: possible leak", message: `${meta.verdict.summary}${next}`, tags: ["rotating_light", "droplet"], priority: 5, image: jpeg });
+      }
+    }
+    return meta;
+  }
+
+  private async keepDay(date: string, image: ArrayBuffer, plant?: string): Promise<void> {
+    const days = ((await this.ctx.storage.get<CameraDay[]>("cam:days")) ?? []).filter((d) => d.date !== date);
+    days.push({ date, ...(plant ? { plant } : {}) });
+    days.sort((a, b) => a.date.localeCompare(b.date));
+    const dropped = days.splice(0, Math.max(0, days.length - DAYS_KEPT));
+    await this.ctx.storage.put({ "cam:days": days, [`cam:img:${date}`]: image });
+    if (dropped.length) await this.ctx.storage.delete(dropped.map((d) => `cam:img:${d.date}`));
+  }
+
+  async cameraOverview(): Promise<CameraOverview> {
+    const [latest, leak, days] = await Promise.all([
+      this.ctx.storage.get<FrameMeta>("cam:latest"),
+      this.ctx.storage.get<FrameMeta>("cam:leak"),
+      this.ctx.storage.get<CameraDay[]>("cam:days"),
+    ]);
+    return { latest: latest ?? null, leak: leak ?? null, days: days ?? [], checks: Boolean(this.env.ANTHROPIC_API_KEY), lastPollAt: (await this.ctx.storage.get<number>("cam:polled")) ?? null };
+  }
+
+  /** If the camera script was running and has gone quiet, say so once: leak checks silently stop while it is down. */
+  private async watchCameraScript(now: number): Promise<void> {
+    const polled = (await this.ctx.storage.get<number>("cam:polled")) ?? null;
+    const told = await this.ctx.storage.get<boolean>("cam:offlineTold");
+    if (scriptStale(polled, now)) {
+      if (told) return;
+      await this.ctx.storage.put("cam:offlineTold", true);
+      await notify(this.env, { title: "Valve: camera script stopped", message: "The camera script has not asked for a photo for 15 minutes, so leak checks and the daily photo are paused. Check the container on the homelab.", tags: ["warning"], priority: 3 });
+    } else if (told) {
+      await this.ctx.storage.delete("cam:offlineTold");
+    }
+  }
+
+  /** "latest", "leak" or a "YYYY-MM-DD" day. */
+  async cameraImage(which: string): Promise<ArrayBuffer | null> {
+    const key = which === "latest" ? "cam:latest:img" : which === "leak" ? "cam:leak:img" : /^\d{4}-\d{2}-\d{2}$/.test(which) ? `cam:img:${which}` : null;
+    return key ? ((await this.ctx.storage.get<ArrayBuffer>(key)) ?? null) : null;
+  }
+
   /** Called every minute by the cron trigger. */
   tick(): Promise<void> {
     return this.serial(async () => {
       await this.valve.keepWarm().catch(() => undefined); // keeps the spare login alive; a failure shows up in the checks below
+      await this.watchCameraScript(Date.now());
       await this.supervise();
       const state = await this.getState();
       const now = Date.now();
@@ -211,6 +345,7 @@ export class Controller extends DurableObject<Env> {
         await this.ctx.storage.put("state", idleState);
         const watered = step.next.wateredSeconds;
         await this.record({ at: state.startedAt, trigger: state.trigger, outcome: "completed", wateredSeconds: watered, note: `${state.cycles} cycles` });
+        await this.cameraRunEnded(state.startedAt, now);
         const summary = `Watered ${mins(watered)} over ${state.cycles} cycles.`;
         await notify(this.env, { title: "Valve: finished", message: summary, tags: ["white_check_mark"] });
         await this.heartbeat(state.trigger, "ok", summary);

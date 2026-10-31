@@ -26,4 +26,10 @@ export interface Env {
   GOOGLE_PROJECT_ID?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  // The garden camera (optional). Without a key, frames are kept but not checked for leaks.
+  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_BASE_URL?: string; // tests only: point at a fake Messages API
+  CAMERA_MODEL?: string; // default claude-haiku-5-5
+  CAMERA_SCENE?: string; // what the camera looks at, told to the model (the plants, where the valve is)
+  CAMERA_TIMELAPSE_HOUR?: string; // local hour of the daily frame, default 12
 }

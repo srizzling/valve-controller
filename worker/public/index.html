@@ -253,6 +253,19 @@
       <div id="wx-body"><p class="muted">Loading the forecast…</p></div>
     </section>
 
+    <section class="card" id="cam" aria-label="Garden camera" hidden>
+      <div class="card-head"><h2>Camera</h2><span id="cam-when" class="muted small"></span></div>
+      <img id="cam-img" class="cam-img" alt="The latest photo of the valve and plant" hidden>
+      <p id="cam-offline" class="cam-verdict bad" role="status" hidden></p>
+      <p id="cam-verdict" class="cam-verdict" role="status"></p>
+      <div class="actions"><button id="cam-snap" class="btn btn-ghost" type="button">Take a photo now</button></div>
+      <div id="lapse" class="lapse" hidden>
+        <div class="lapse-head"><span id="lapse-date" class="small"></span><button id="lapse-play" class="btn btn-ghost" type="button">Play</button></div>
+        <input id="lapse-range" type="range" min="0" value="0" aria-label="Day of the timelapse">
+        <p id="lapse-note" class="muted small"></p>
+      </div>
+    </section>
+
     <details class="card settings" id="settings">
       <summary><h2>Cycle &amp; schedule</h2><span class="muted small" id="settings-summary"></span></summary>
       <form id="config">

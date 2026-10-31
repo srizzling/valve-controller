@@ -26,6 +26,11 @@ describe("Cloudflare Access JWT", () => {
     const { jwks, mint } = await setup();
     expect(await verifyAccessJwt(await mint(good), jwks, expected, 1500)).toEqual({ email: "me@example.com" });
   });
+  it("names a service token by its client id, since it has no email", async () => {
+    const { jwks, mint } = await setup();
+    const { email: _email, ...machine } = good;
+    expect(await verifyAccessJwt(await mint({ ...machine, common_name: "client-id" }), jwks, expected, 1500)).toEqual({ serviceToken: "client-id" });
+  });
   it("rejects expiry, wrong audience, wrong issuer, unknown key, wrong alg, forged signature", async () => {
     const { jwks, mint } = await setup();
     const other = await setup();

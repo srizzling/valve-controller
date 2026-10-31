@@ -41,13 +41,32 @@ resource "cloudflare_zero_trust_access_application" "ui" {
     uri  = var.app_hostname
   }]
 
-  policies = [{
-    name     = "Owner"
-    decision = "allow"
-    include = [for e in var.allowed_emails : {
-      email = { email = e }
-    }]
-  }]
+  policies = [
+    {
+      name     = "Owner"
+      decision = "allow"
+      include = [for e in var.allowed_emails : {
+        email = { email = e }
+      }]
+    },
+    # The script at home that takes the camera photos signs in with this token. It gets through Access, but the Worker
+    # then lets it reach only the two camera routes it needs (worker/src/index.ts, SERVICE_TOKEN_ROUTES).
+    {
+      name     = "Camera script"
+      decision = "non_identity"
+      include = [{
+        service_token = { token_id = cloudflare_zero_trust_access_service_token.camera.id }
+      }]
+    },
+  ]
+
+  depends_on = [cloudflare_zero_trust_organization.this]
+}
+
+resource "cloudflare_zero_trust_access_service_token" "camera" {
+  account_id = var.cloudflare_account_id
+  name       = "Valve controller: camera script"
+  duration   = "8760h" # a year; `terraform apply -replace` it when it nears the end
 
   depends_on = [cloudflare_zero_trust_organization.this]
 }

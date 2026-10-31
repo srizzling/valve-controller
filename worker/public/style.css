@@ -392,3 +392,11 @@ button.chip.action { cursor: pointer; pointer-events: auto; } /* .hud-bottom ign
 .reconnect-qr { width: 240px; max-width: 100%; margin: 12px auto; border-radius: 8px; overflow: hidden; }
 .reconnect-qr svg { display: block; width: 100%; height: auto; }
 .reconnect .row { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ───────────── camera ───────────── */
+.cam-img { display: block; width: 100%; border-radius: 14px; background: #0f1a2c; }
+.cam-verdict { margin: 10px 0; font-size: .92rem; }
+.cam-verdict.bad { color: #ff9b9b; font-weight: 700; }
+.lapse { margin-top: 14px; border-top: 1px solid #1f2f4b; padding-top: 12px; }
+.lapse-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.lapse input[type="range"] { width: 100%; }

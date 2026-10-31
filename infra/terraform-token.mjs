@@ -35,6 +35,7 @@ const fail = (m) => {
 const ACCOUNT_GROUPS = [
   "Workers Scripts Write", // worker, versions, deployment, cron trigger, custom domain, workers.dev switch
   "Access: Apps and Policies Write", // the two Access applications and their policies
+  "Access: Service Tokens Write", // the token the camera script signs in with
   "Access: Organizations, Identity Providers, and Groups Write", // the Zero Trust organisation (team address)
 ];
 const ZONE_GROUPS = [

@@ -26,7 +26,7 @@ const ALLOWED_ACTIONS = ["hashicorp/setup-terraform@*", "googleapis/release-plea
 const REQUIRED_CHECK = "ci-ok"; // the gate job in .github/workflows/ci.yml
 
 // Terraform secrets that CI needs, by the same names they have in infra/.env.
-const SECRETS = ["CLOUDFLARE_API_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "TF_VAR_healthchecks_api_key", "TF_VAR_tuya_session", "TF_VAR_ntfy_token"];
+const SECRETS = ["CLOUDFLARE_API_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "TF_VAR_healthchecks_api_key", "TF_VAR_tuya_session", "TF_VAR_ntfy_token", "TF_VAR_anthropic_api_key"];
 
 const gh = (args, input) => spawnSync("gh", args, { encoding: "utf8", input });
 const message = (r) => {

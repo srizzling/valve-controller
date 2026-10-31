@@ -28,6 +28,7 @@
     (cd worker && npm run typecheck && npm test)
     python -m unittest discover -s scripts/tests
     node --check scripts/arch.mjs
+    node --check scripts/camera-pusher.mjs
     terraform version
   '';
 }

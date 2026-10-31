@@ -23,7 +23,7 @@ node scripts/github-setup.mjs secrets --dry-run   # shows the names it would set
 
 | Where | Name | Comes from |
 | --- | --- | --- |
-| secret | `CLOUDFLARE_API_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TF_VAR_healthchecks_api_key`, `TF_VAR_tuya_session`, `TF_VAR_ntfy_token` | `infra/.env` |
+| secret | `CLOUDFLARE_API_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TF_VAR_healthchecks_api_key`, `TF_VAR_tuya_session`, `TF_VAR_ntfy_token`, `TF_VAR_anthropic_api_key` | `infra/.env` |
 | variable | `TFVARS`, `CLOUDFLARE_ACCOUNT_ID` | `infra/terraform.tfvars` |
 
 Anyone who can change a workflow on a branch can read these secrets when it runs, so keep the repository single-owner.

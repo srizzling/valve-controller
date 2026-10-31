@@ -119,6 +119,7 @@ jobs:
       TF_VAR_healthchecks_api_key: ${{ secrets.TF_VAR_healthchecks_api_key }}
       TF_VAR_tuya_session: ${{ secrets.TF_VAR_tuya_session }}
       TF_VAR_ntfy_token: ${{ secrets.TF_VAR_ntfy_token }}
+      TF_VAR_anthropic_api_key: ${{ secrets.TF_VAR_anthropic_api_key }}
       TFVARS: ${{ vars.TFVARS }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       TF_IN_AUTOMATION: "1"

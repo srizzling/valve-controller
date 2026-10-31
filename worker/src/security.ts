@@ -19,5 +19,5 @@ export const securityHeaders = createMiddleware(async (c, next) => {
   h.set("Referrer-Policy", "no-referrer"); // the authorize URL carries OAuth state
   h.set("Cross-Origin-Opener-Policy", "same-origin");
   h.set("Strict-Transport-Security", "max-age=31536000");
-  h.set("Cache-Control", "no-store");
+  if (!h.has("Cache-Control")) h.set("Cache-Control", "no-store"); // a route may allow caching, such as a timelapse frame that never changes
 });
