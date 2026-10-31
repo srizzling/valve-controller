@@ -17,6 +17,7 @@ locals {
     ACCESS_AUD            = cloudflare_zero_trust_access_application.ui.aud
     CAMERA_TIMELAPSE_HOUR = var.camera_timelapse_hour
     CAMERA_MODEL          = var.camera_model
+    CAMERA_SCENE          = var.camera_scene
   }
 
   worker_secrets = merge(
