@@ -21,9 +21,9 @@ network asks the Worker every few seconds "do you want a photo?" and, when the a
 The Worker decides when (`worker/src/camera.ts`, `wantedFrame`); the script knows nothing about watering.
 
 ```
-camera ── your network ── scripts/camera-pusher.mjs ──► Cloudflare Access ──► Worker ──► Claude (vision)
-                                  polls GET /api/camera/wanted                  │  └──► ntfy (alert + photo)
-                                  posts POST /api/camera/frame?kind=...         └──► Durable Object storage
+Eufy camera ─ HomeBase ─ eufy-snapshot ─ scripts/camera-pusher.mjs ──► Cloudflare Access ──► Worker ──► Claude (vision)
+  (battery)    (P2P)     (HTTP, homelab)   polls GET /api/camera/wanted                       │  └──► ntfy (alert + photo)
+                                           posts POST /api/camera/frame?kind=...              └──► Durable Object storage
 ```
 
 The script signs in with a Cloudflare Access **service token**, which Terraform creates. The Worker lets that token reach
@@ -32,15 +32,18 @@ only `GET /api/camera/wanted` and `POST /api/camera/frame`; it cannot read the s
 ## Setup
 
 1. Put an Anthropic API key in `infra/.env` as `TF_VAR_anthropic_api_key` (and copy it to GitHub with
-   `node scripts/github-setup.mjs secrets`). Optional in `terraform.tfvars`: `camera_timelapse_hour`, `camera_model`, and `camera_scene`, a sentence telling the model what
-   it is looking at, for example `potted lemon tree, mint, coriander and two roses on artificial grass`.
+   `node scripts/github-setup.mjs secrets`). Optional in `terraform.tfvars`: `camera_timelapse_hour`, `camera_model`, and `camera_scene`, a sentence or two telling the model what
+   it is looking at and where the valve is. Longer than 400 characters is cut off. One that fits this garden: `Courtyard seen from above, on
+   artificial grass. Potted lemon tree, mint, coriander and two roses. The water valve is on the wall just right of the
+   hot-water cylinder and a black drip pipe runs along the ground from it to each pot. Water should come out only at the
+   drippers in the pots. A pipe joint spraying, a pipe end lying loose, or water running or pooling on the grass is a fault.`
 2. The service token needs a Terraform token permission it did not have before. Run `node terraform-token.mjs --rotate`
    in `infra/` (it adds **Access: Service Tokens Write**), update the `CLOUDFLARE_API_TOKEN` GitHub secret, then apply.
 3. Read the token: `terraform output -raw camera_client_id` and `terraform output -raw camera_client_secret`.
-4. Run the script on the homelab. It runs as the `camera-pusher` service in the homelab repo
-   (`apps/camera-pusher`, a copy of `scripts/camera-pusher.mjs`). It needs only outbound HTTPS to the Worker and RTSP to
-   go2rtc, so no ports are opened. Put `VALVE_URL`, `CAMERA_CLIENT_ID` and `CAMERA_CLIENT_SECRET` in the homelab's
-   `.env` on the box and deploy. Anywhere else, plain Node 20 or later (with ffmpeg for an RTSP source) works too:
+4. Run the script on the homelab. It runs as the `camera-pusher` service in the homelab repo (`apps/camera-pusher`, a copy
+   of `scripts/camera-pusher.mjs`), reading its photo over HTTP from the `eufy-snapshot` service next to it (see below).
+   It needs only outbound HTTPS to the Worker, so no ports are opened. Put `VALVE_URL`, `CAMERA_CLIENT_ID` and
+   `CAMERA_CLIENT_SECRET` in the homelab's `.env` on the box and deploy. Anywhere else, plain Node 20 or later works too:
 
    ```sh
    export VALVE_URL=... CF_ACCESS_CLIENT_ID=... CF_ACCESS_CLIENT_SECRET=... CAMERA_SOURCE=...
@@ -66,14 +69,40 @@ The photo appears in the UI's Camera card. The card stays hidden until the first
 Photos must be JPEG and under 1.5 MB, so shrink them in the command if the camera's native size is bigger
 (`ffmpeg ... -vf scale=1280:-2 -q:v 4`).
 
-The eufyCam 3 on a HomeBase 3 works over RTSP, served by the HomeBase on port 554. Switch it on in the Eufy app under
-the camera's Settings, General, Storage, RTSP/NAS. The app words this as NAS setup, but it only reveals a URL such as
-`rtsp://<user>:<password>@<homebase-ip>/live0` with an account the HomeBase generates, and no NAS is needed. Until it is
-switched on the HomeBase answers `404 Stream Not Found` on every path even though the port is open. Give the HomeBase a
-fixed IP (a DHCP reservation). A battery camera wakes when the stream is pulled; a first frame took about 6 seconds.
+### The Eufy camera
 
-In the homelab this goes through go2rtc, which holds the single connection to the HomeBase, so the script reads
-`rtsp://go2rtc:8554/eufy` and the camera can also be watched in the browser.
+A battery eufyCam 3 behind a HomeBase 3 does not give photos over RTSP, although the HomeBase listens on port 554 and the
+Eufy app has an RTSP/NAS screen that shows a `rtsp://user:pass@homebase/live0` link:
+
+- The stream at `/live0` exists only for a few seconds after the switch on that screen is flipped. The rest of the time
+  every path answers `404 Stream Not Found`, with the camera awake or not, so nothing can pull a photo on demand.
+- The username and password change every time that screen is opened.
+- Community reports say battery cameras serve a stream only on motion or when it is explicitly requested, capped at about
+  three minutes, and that some HomeBase 3 firmware broke RTSP altogether.
+
+What works is what the community SDKs do: ask the HomeBase over its P2P channel to wake the camera and start a short live
+burst, then decode one frame. In the homelab repo `apps/eufy-snapshot` does this with `@mega-yfue/eufy-sdk` (the successor
+of the archived `eufy-security-ws`) and returns a JPEG at `http://eufy-snapshot:8080/snapshot.jpg`, shrunk to 1280 px
+wide. A still takes about 6 seconds. It signs in to the Eufy cloud once (interactively, in case of a captcha or an emailed
+code) and keeps the session on disk; `/healthz` reports `loggedIn`, and Gatus alerts if it goes false.
+
+Use a second Eufy account the camera is shared with where you can, because a login from a new place can sign the phone app
+out of the owner account. Give the HomeBase a fixed address (`scripts/unifi-reserve-ips.py` in the homelab repo does this
+for the HomeBase there). The camera is infrared in the dark, and the camera's own night mode makes a wall close to the
+lens a white blur.
+
+### Other cameras
+
+`CAMERA_SOURCE` is one of:
+
+| Value | What happens |
+| --- | --- |
+| `http://host/snapshot.jpg` | the script fetches the JPEG |
+| `rtsp://user:pass@host/path` | `ffmpeg` grabs one frame and shrinks it to 1280 px wide (needs ffmpeg) |
+| `cmd:<shell command>` | the script runs the command and reads a JPEG from its output |
+
+Photos must be JPEG and under 1.5 MB, so shrink them in the command if the camera's native size is bigger
+(`ffmpeg ... -vf scale=1280:-2 -q:v 4`). A camera with an always-on RTSP stream needs nothing more than this.
 
 ## What the model is told
 
@@ -87,6 +116,8 @@ reached produces no alert, but the UI shows "Not checked" with the reason.
 - A slow drip or a small weep will not show up in a camera photo. This catches a burst or detached hose, not a loose
   fitting.
 - Night and infrared make spray hard to see. The leak checks run whenever a run does, so a night run gets a weaker
-  check.
+  check. Tried at night with the real valve (5 minutes of drip, photos every 15 seconds): comparing a dry frame with frames
+  from two minutes into the run showed no visible change at the valve, the pipe or the ground, and the black pipe is not
+  visible in infrared either way. Judge the check by a daylight run, and do not rely on it for small drips.
 - One alert per run and kind, so a hose that stays broken does not alert every cycle. The photo that triggered it is kept
   as "leak" until the next one.
