@@ -651,10 +651,101 @@ async function act(path, okText) {
   }
 }
 
+/* ───────────────────────── camera ───────────────────────── */
+
+let camera = null; // {latest, leak, days, checks} from /api/camera
+let lapseTimer = null;
+
+const KIND = { during: "while watering", after: "after the run", manual: "on request", timelapse: "daily photo" };
+
+function renderCamera() {
+  const c = camera;
+  $("cam").hidden = !c || (!c.latest && !c.days.length);
+  if ($("cam").hidden) return;
+  const f = c.latest;
+  $("cam-img").hidden = !f;
+  if (f) {
+    $("cam-img").src = `/api/camera/image/latest?t=${f.at}`; // the query changes the URL, so the browser fetches the new photo
+    $("cam-when").textContent = `${when(f.at)}, ${KIND[f.kind]}`;
+  }
+  const stale = c.lastPollAt !== null && Date.now() + skew - c.lastPollAt > 15 * 60000;
+  $("cam-offline").hidden = !stale;
+  if (stale) $("cam-offline").textContent = `The camera script has not checked in since ${when(c.lastPollAt)}, so leak checks are paused.`;
+  const v = $("cam-verdict");
+  v.className = `cam-verdict${f?.verdict?.leak ? " bad" : ""}`;
+  if (f?.verdict) v.textContent = `${f.verdict.leak ? "⚠️ " : "✅ "}${f.verdict.summary}`;
+  else if (f?.error) v.textContent = `Not checked: ${f.error}`;
+  else v.textContent = "";
+  $("lapse").hidden = c.days.length < 2;
+  if (c.days.length) {
+    const r = $("lapse-range");
+    const atEnd = Number(r.value) >= Number(r.max) || !r.max;
+    r.max = String(c.days.length - 1);
+    if (atEnd) r.value = r.max;
+    $("lapse-date").textContent = c.days.at(Number(r.value))?.date ?? "";
+    $("lapse-note").textContent = c.days.at(Number(r.value))?.plant ?? "";
+  }
+}
+
+function showLapse() {
+  const d = camera.days[Number($("lapse-range").value)];
+  if (!d) return;
+  $("cam-img").src = `/api/camera/image/${d.date}`;
+  $("cam-img").hidden = false;
+  $("lapse-date").textContent = d.date;
+  $("lapse-note").textContent = d.plant ?? "";
+}
+
+function playLapse() {
+  const r = $("lapse-range");
+  if (lapseTimer) { clearInterval(lapseTimer); lapseTimer = null; $("lapse-play").textContent = "Play"; return; }
+  r.value = "0";
+  showLapse();
+  $("lapse-play").textContent = "Stop";
+  lapseTimer = setInterval(() => {
+    if (Number(r.value) >= Number(r.max)) { clearInterval(lapseTimer); lapseTimer = null; $("lapse-play").textContent = "Play"; return; }
+    r.value = String(Number(r.value) + 1);
+    showLapse();
+  }, 250);
+}
+
+let cameraKey = "";
+async function refreshCamera() {
+  try {
+    camera = await api("/camera");
+  } catch {
+    return; // the card stays as it was; the connection chip already says if the app is offline
+  }
+  const key = JSON.stringify(camera);
+  if (key !== cameraKey && !lapseTimer) renderCamera();
+  cameraKey = key;
+}
+
+async function takePhoto() {
+  $("cam-snap").disabled = true;
+  try {
+    toast((await api("/camera/snapshot", { method: "POST" })).message);
+    // the camera script polls every few seconds; look for the new photo for a couple of minutes
+    for (let i = 0; i < 24; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const before = camera?.latest?.at;
+      await refreshCamera();
+      if (camera?.latest?.at !== before) break;
+    }
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    $("cam-snap").disabled = false;
+  }
+}
+
 /* ───────────────────────── wiring ───────────────────────── */
 
 buildScene();
 
+$("cam-snap").onclick = takePhoto;
+$("lapse-play").onclick = playLapse;
+$("lapse-range").oninput = () => { clearInterval(lapseTimer); lapseTimer = null; $("lapse-play").textContent = "Play"; showLapse(); };
 $("start").onclick = () => act("/start", "Started");
 $("stop").onclick = () => act("/stop", "Stopped");
 $("add-schedule").onclick = () => { schedules.push({ days: [0, 1, 2, 3, 4, 5, 6], at: "clock", time: "06:00" }); renderSchedules(); };
@@ -694,6 +785,8 @@ if (demo) {
   refreshStatus(true);
   refreshWeather();
   refreshValve();
+  refreshCamera();
+  setInterval(() => !document.hidden && refreshCamera(), 60000);
   setInterval(() => !document.hidden && refreshValve(), 5 * 60000);
   // quick while a run is on, relaxed when idle
   (function pollStatus() {

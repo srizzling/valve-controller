@@ -97,6 +97,32 @@ variable "google_project_id" {
   description = "Project id of your Google Home cloud-to-cloud integration. Leave empty to leave Google Home switched off."
 }
 
+# ───────────── The garden camera (optional) ─────────────
+variable "anthropic_api_key" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "An Anthropic API key, so the Worker can look at camera photos and alert on a leak. Leave empty to keep photos without checking them."
+}
+
+variable "camera_scene" {
+  type        = string
+  default     = ""
+  description = "What the camera looks at, told to the model, for example: potted lemon tree, mint, coriander and two roses on artificial grass; the drip line runs along the fence."
+}
+
+variable "camera_model" {
+  type        = string
+  default     = ""
+  description = "Claude model that checks camera photos. Empty uses the Worker's default, claude-haiku-5-5."
+}
+
+variable "camera_timelapse_hour" {
+  type        = string
+  default     = "12"
+  description = "Local hour (0-23) of the daily photo for the growth timelapse. Midday gives the steadiest light."
+}
+
 # ───────────── The valve, through Tuya's cloud ─────────────
 variable "tuya_session" {
   type        = string

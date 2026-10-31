@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { checkAccess } from "./access";
+import { isFrameKind } from "./camera";
 import { Controller } from "./controller";
 import type { Env } from "./env";
 import { googleRoutes } from "./google";
@@ -18,12 +19,16 @@ export { Controller };
 
 const controller = (env: Env) => env.CONTROLLER.get(env.CONTROLLER.idFromName("main"));
 
+const SERVICE_TOKEN_ROUTES = new Set(["GET /api/camera/wanted", "POST /api/camera/frame"]);
+
 const api = new Hono<{ Bindings: Env }>();
 // The Access cookie is sent with any request from the browser, so refuse writes that another site triggered.
 api.use("*", csrf());
 api.use("*", async (c, next) => {
   const access = await checkAccess(c.req.raw, c.env);
   if (!access.ok) return c.json({ error: access.error }, access.status);
+  // The camera script signs in with an Access service token, which must not be able to do anything else (start the valve, say).
+  if (access.serviceToken && !SERVICE_TOKEN_ROUTES.has(`${c.req.method} ${new URL(c.req.url).pathname}`)) return c.json({ error: "this token may only talk to the camera" }, 403);
   await next();
 });
 api.get("/status", async (c) => c.json(await controller(c.env).getStatus()));
@@ -104,6 +109,30 @@ api.get("/tuya/login", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "could not check the login" }, 502);
   }
+});
+
+// The garden camera. The script at home polls /wanted, then posts the frame it was asked for.
+api.get("/camera", async (c) => c.json(await controller(c.env).cameraOverview()));
+api.get("/camera/wanted", async (c) => c.json({ capture: await controller(c.env).cameraWanted() }));
+api.post("/camera/snapshot", async (c) => {
+  await controller(c.env).cameraRequest();
+  return c.json({ ok: true, message: "Asked the camera for a photo" });
+});
+api.post("/camera/frame", async (c) => {
+  const kind = c.req.query("kind");
+  if (!isFrameKind(kind)) return c.json({ error: "kind must be during, after, manual or timelapse" }, 400);
+  try {
+    return c.json(await controller(c.env).cameraFrame(kind, await c.req.arrayBuffer()));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "could not keep the frame" }, 400);
+  }
+});
+// "latest", "leak" or a date. A day's photo never changes, so the browser may keep it.
+api.get("/camera/image/:which", async (c) => {
+  const which = c.req.param("which");
+  const image = await controller(c.env).cameraImage(which);
+  if (!image) return c.json({ error: "no such photo" }, 404);
+  return c.body(image, 200, { "Content-Type": "image/jpeg", "Cache-Control": /^\d/.test(which) ? "private, max-age=31536000, immutable" : "no-store" });
 });
 
 const app = new Hono<{ Bindings: Env }>();

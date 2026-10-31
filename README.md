@@ -53,6 +53,7 @@ Object with alarms), the weather checks, the valve client, ntfy, and Google Home
 - **Start times:** a clock time, or relative to sunrise or sunset, as many as you like. Any of them can be an extra run that only happens on a hot day.
 - **Alerts:** ntfy for every run, plus a missed-run alert from healthchecks.io and warnings for an expired login, an offline valve and a low battery.
 - **Control:** a web UI behind Cloudflare Access, or Google Home.
+- **Camera (optional):** a camera pointed at the valve gets checked for leaks during and after each run, and takes a daily photo for a growth timelapse.
 
 ## Docs
 
@@ -62,6 +63,7 @@ Object with alarms), the weather checks, the valve client, ntfy, and Google Home
 | [The UI and how a run behaves](docs/ui-and-behaviour.md) | the scenes, the rain check, the weather smarts maths |
 | [Setup](docs/setup.md) | Terraform, the two-step first deploy, state in R2 |
 | [CI/CD and GitHub](docs/ci-and-github.md) | the workflow, secrets, repository settings, Renovate |
+| [The garden camera](docs/camera.md) | leak checks, the growth timelapse, the script at home, the Access service token |
 | [Google Home and alerts](docs/google-home-and-alerts.md) | linking Google Home, every alert and when it fires |
 | [Development](docs/development.md) | devenv, tests, and how the architecture diagram is kept current |
 

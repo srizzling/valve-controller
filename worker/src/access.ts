@@ -13,7 +13,7 @@ export async function verifyAccessJwt(
   jwks: Jwks,
   expected: { issuer: string; aud: string },
   nowSeconds = Math.floor(Date.now() / 1000),
-): Promise<{ email?: string } | null> {
+): Promise<{ email?: string; serviceToken?: string } | null> {
   const [h, p, sig] = token.split(".");
   if (!h || !p || !sig) return null;
   try {
@@ -23,11 +23,12 @@ export async function verifyAccessJwt(
     if (!jwk) return null;
     const key = await crypto.subtle.importKey("jwk", { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: "RS256", ext: true }, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
     if (!(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, unb64u(sig), new TextEncoder().encode(`${h}.${p}`)))) return null;
-    const c = parse<{ iss: string; aud: string | string[]; exp: number; nbf?: number; email?: string }>(p);
+    const c = parse<{ iss: string; aud: string | string[]; exp: number; nbf?: number; email?: string; common_name?: string }>(p);
     const aud = Array.isArray(c.aud) ? c.aud : [c.aud];
     if (c.iss !== expected.issuer || !aud.includes(expected.aud)) return null;
     if (typeof c.exp !== "number" || c.exp < nowSeconds || (c.nbf !== undefined && c.nbf > nowSeconds)) return null;
-    return { email: c.email };
+    // a service token has no person behind it; Access puts its client id in common_name
+    return c.email ? { email: c.email } : { serviceToken: c.common_name };
   } catch {
     return null;
   }
@@ -43,7 +44,7 @@ async function getJwks(team: string, maxAgeMs: number): Promise<Jwks> {
   return cache.jwks;
 }
 
-export type AccessResult = { ok: true; email?: string } | { ok: false; status: 401 | 403 | 502 | 503; error: string };
+export type AccessResult = { ok: true; email?: string; serviceToken?: string } | { ok: false; status: 401 | 403 | 502 | 503; error: string };
 
 export async function checkAccess(req: Request, env: Env): Promise<AccessResult> {
   if (env.DEV_BYPASS_ACCESS === "true") return { ok: true }; // only ever set in .dev.vars
@@ -56,7 +57,7 @@ export async function checkAccess(req: Request, env: Env): Promise<AccessResult>
     // keys rotate: if the token's key isn't in the cached set, refresh once (at most every minute)
     let claims = await verifyAccessJwt(token, await getJwks(team, 60 * 60_000), expected);
     if (!claims) claims = await verifyAccessJwt(token, await getJwks(team, 60_000), expected);
-    return claims ? { ok: true, email: claims.email } : { ok: false, status: 403, error: "invalid Cloudflare Access token" };
+    return claims ? { ok: true, ...claims } : { ok: false, status: 403, error: "invalid Cloudflare Access token" };
   } catch (e) {
     console.error("access check failed", e);
     return { ok: false, status: 502, error: "could not verify Cloudflare Access token" };

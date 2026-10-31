@@ -3,18 +3,20 @@
 
 locals {
   worker_vars = {
-    TUYA_DEVICE_ID      = var.tuya_device_id
-    TUYA_USER_CODE      = var.tuya_user_code
-    TUYA_SWITCH_CODE    = var.tuya_switch_code
-    TUYA_COUNTDOWN_CODE = var.tuya_countdown_code
-    TIMEZONE            = var.timezone
-    LATITUDE            = var.latitude
-    LONGITUDE           = var.longitude
-    NTFY_URL            = var.ntfy_url
-    NTFY_TOPIC          = local.ntfy_topic
-    GOOGLE_PROJECT_ID   = var.google_project_id
-    ACCESS_TEAM_DOMAIN  = cloudflare_zero_trust_organization.this.auth_domain
-    ACCESS_AUD          = cloudflare_zero_trust_access_application.ui.aud
+    TUYA_DEVICE_ID        = var.tuya_device_id
+    TUYA_USER_CODE        = var.tuya_user_code
+    TUYA_SWITCH_CODE      = var.tuya_switch_code
+    TUYA_COUNTDOWN_CODE   = var.tuya_countdown_code
+    TIMEZONE              = var.timezone
+    LATITUDE              = var.latitude
+    LONGITUDE             = var.longitude
+    NTFY_URL              = var.ntfy_url
+    NTFY_TOPIC            = local.ntfy_topic
+    GOOGLE_PROJECT_ID     = var.google_project_id
+    ACCESS_TEAM_DOMAIN    = cloudflare_zero_trust_organization.this.auth_domain
+    ACCESS_AUD            = cloudflare_zero_trust_access_application.ui.aud
+    CAMERA_TIMELAPSE_HOUR = var.camera_timelapse_hour
+    CAMERA_MODEL          = var.camera_model
   }
 
   worker_secrets = merge(
@@ -27,6 +29,7 @@ locals {
     },
     var.ntfy_token != "" ? { NTFY_TOKEN = var.ntfy_token } : {},
     var.tuya_session != "" ? { TUYA_SESSION = var.tuya_session } : {},
+    var.anthropic_api_key != "" ? { ANTHROPIC_API_KEY = var.anthropic_api_key } : {},
   )
 
   # Every element needs the same keys, so unused ones are null.
