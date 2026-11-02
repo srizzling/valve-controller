@@ -35,6 +35,20 @@ describe("wantedFrame", () => {
     expect(at(AFTER_DELAY_MS + AFTER_WINDOW_MS)).toBeNull();
   });
 
+  it("asks for a frame before a scheduled run, once per run, and only while idle", () => {
+    const start = afternoon + 5 * 60_000;
+    const marks = { ...noMarks, timelapseDate: "2026-11-02" };
+    expect(wantedFrame({ ...base, now: afternoon, state: idleState, marks, precheckFor: start })).toBe("precheck");
+    expect(wantedFrame({ ...base, now: afternoon, state: idleState, marks, precheckFor: null })).toBeNull();
+    expect(wantedFrame({ ...base, now: afternoon, state: idleState, marks: { ...marks, precheckDone: String(start) }, precheckFor: start })).toBeNull();
+    expect(wantedFrame({ ...base, now: afternoon, state: idleState, marks: { ...marks, precheckDone: String(start) }, precheckFor: start + 6 * 3600_000 })).toBe("precheck"); // the next run is a new one
+    expect(wantedFrame({ ...base, now: watering.phaseStartedAt + 1000, state: watering, marks, precheckFor: start })).toBeNull();
+  });
+
+  it("answers a photo you asked for before the pre-run frame", () => {
+    expect(wantedFrame({ ...base, now: afternoon + 1000, state: idleState, marks: { ...noMarks, manualAt: afternoon }, precheckFor: afternoon + 60_000 })).toBe("manual");
+  });
+
   it("answers a photo request from the UI first, until it goes stale", () => {
     const marks = { ...noMarks, manualAt: afternoon };
     expect(wantedFrame({ ...base, now: afternoon + 1000, state: watering, marks })).toBe("manual");

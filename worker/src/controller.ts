@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { AFTER_DELAY_MS, DEFAULT_TIMELAPSE_HOUR, MAX_FRAME_BYTES, askGrowth, askVision, duringKey, growthBaseline, isJpeg, noMarks, parsePots, scriptStale, wantedFrame } from "./camera";
+import { askWatering } from "./advisor";
+import { AFTER_DELAY_MS, DEFAULT_TIMELAPSE_HOUR, MAX_FRAME_BYTES, PRECHECK_LEAD_MS, PRECHECK_MAX_AGE_MS, askGrowth, askVision, daysBetween, duringKey, growthBaseline, isJpeg, noMarks, parsePots, scriptStale, wantedFrame } from "./camera";
 import type { CameraMarks, FrameKind, FrameMeta, Growth, Pot, PotNote, Verdict } from "./camera";
 import { catchUpStep, forcedAfterRainSkip, newCatchUp } from "./catchup";
 import type { CatchUp } from "./catchup";
@@ -13,6 +14,7 @@ import { placeOf } from "./place";
 import { rainVerdict } from "./rain";
 import type { Forecast } from "./rain";
 import { extraRunWanted, inputsAt, localDate, smartPlan } from "./smart";
+import type { SmartPlan } from "./smart";
 import { sunTimes } from "./sun";
 import { MAX_OPEN_MS, MAX_RUN_MS, runOverdue, watchOpen } from "./supervisor";
 import { TuyaAuthError } from "./tuya";
@@ -62,6 +64,8 @@ const PREFLIGHT_LEAD_MS = 10 * 60_000; // check the agent and valve this long be
 
 const mins = (seconds: number) => `${Math.round((seconds / 60) * 10) / 10} min`;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const cycleCount = (n: number) => `${n} cycle${n === 1 ? "" : "s"}`;
+const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`); // so a reason can be followed by more text
 
 export class Controller extends DurableObject<Env> {
   private queue: Promise<unknown> = Promise.resolve();
@@ -176,15 +180,23 @@ export class Controller extends DurableObject<Env> {
     // noted at most once a minute: the script asks every few seconds and this only has to notice when it stops
     if (now - ((await this.ctx.storage.get<number>("cam:polled")) ?? 0) > 60_000) await this.ctx.storage.put("cam:polled", now);
     const place = placeOf(this.env);
-    const hour = Number(this.env.CAMERA_TIMELAPSE_HOUR);
+    // A fresh frame for the "is it worth watering?" check, once, when the next scheduled start is close.
+    const config = await this.getConfig();
+    const next = config.ai.enabled && this.env.ANTHROPIC_API_KEY ? nextRunAt(config, now, place) : null;
     return wantedFrame({
       now,
       state: await this.getState(),
       marks: await this.getMarks(),
       timeZone: this.env.TIMEZONE,
-      timelapseHour: Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : DEFAULT_TIMELAPSE_HOUR,
+      timelapseHour: this.timelapseHour(),
       daylightEnds: sunTimes(localDate(now, place.timeZone), place.latitude, place.longitude)?.sunset,
+      precheckFor: next !== null && next - now <= PRECHECK_LEAD_MS ? next : null,
     });
+  }
+
+  private timelapseHour(): number {
+    const hour = Number(this.env.CAMERA_TIMELAPSE_HOUR);
+    return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : DEFAULT_TIMELAPSE_HOUR;
   }
 
   /** "Take a photo now" from the UI: the camera script picks it up on its next poll. */
@@ -201,6 +213,7 @@ export class Controller extends DurableObject<Env> {
     const today = localDate(now, this.env.TIMEZONE);
     const state = await this.getState();
     const meta: FrameMeta = { at: now, kind, valveOpen: state.phase === "watering" };
+    const precheckFor = kind === "precheck" ? nextRunAt(await this.getConfig(), now, placeOf(this.env)) : null;
 
     // Mark the request answered before the slow model call, so the script is not asked for the same frame again.
     await this.changeMarks((m) => {
@@ -208,8 +221,15 @@ export class Controller extends DurableObject<Env> {
       if (kind === "after") return { ...m, afterDue: null };
       if (kind === "manual") return { ...m, manualAt: null };
       if (kind === "timelapse") return { ...m, timelapseDate: today };
+      if (kind === "precheck") return { ...m, precheckDone: String(precheckFor ?? "") };
       return m;
     });
+
+    // The pre-run frame is for the watering decision, which looks at it when the run starts. It is not a leak check and not the latest photo.
+    if (kind === "precheck") {
+      await this.ctx.storage.put({ "cam:precheck": { at: now }, "cam:precheck:img": image });
+      return meta;
+    }
 
     try {
       meta.verdict = await askVision(this.env, kind, meta.valveOpen, jpeg);
@@ -404,34 +424,58 @@ export class Controller extends DurableObject<Env> {
         rainNote = ` Weather check failed (${weatherProblem}), so your normal cycles apply.`;
       } else {
         if (catchUpNote) rainNote = ` ${catchUpNote}`; // the rain check was made just before this
+        const smart = smartPlan(config.smart, config.cycles, inputsAt(weather.forecast, now, this.env.TIMEZONE));
+
+        // A rain skip is held here, not acted on yet, so the Claude check below can look at it.
+        let rainSkip: string | null = null;
         if (trigger === "schedule" && config.rain.enabled) {
           try {
             const verdict = rainVerdict(weather.forecast, config.rain, now);
             const forced = verdict.skip ? forcedAfterRainSkip((await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [], weather.forecast, config.rain, now) : null;
-            if (verdict.skip && !forced) {
-              await this.record({ at: now, trigger, outcome: "skipped-rain", wateredSeconds: 0, note: verdict.reason });
-              const pending = extraRunEtMm === undefined && config.rain.catchUp ? newCatchUp(now, config.rain, nextRunAt(config, now, placeOf(this.env))) : null;
-              if (pending) await this.ctx.storage.put("catchUp", pending);
-              const later = pending ? ` After ${this.clock(pending.checkAt)} it checks whether the rain came and waters if not.` : "";
-              await notify(this.env, { title: "Valve: skipped for rain", message: `Scheduled run skipped. ${verdict.reason}.${later}`, tags: ["cloud_with_rain"] });
-              await this.heartbeat(trigger, "ok", `skipped for rain: ${verdict.reason}`);
-              return { ok: true, message: `skipped: ${verdict.reason}` };
-            }
-            rainNote = forced ? ` Forecast: ${verdict.reason}. ${forced}` : ` Forecast: ${verdict.reason}.`;
+            if (verdict.skip && !forced) rainSkip = verdict.reason;
+            else rainNote = forced ? ` Forecast: ${verdict.reason}. ${forced}` : ` Forecast: ${verdict.reason}.`;
           } catch (e) {
             rainNote = ` Rain check failed (${message(e)}), watering anyway.`;
           }
         }
-        const smart = smartPlan(config.smart, config.cycles, inputsAt(weather.forecast, now, this.env.TIMEZONE));
-        if (!smart.run) {
-          const why = smart.reasons.join(" ");
+
+        // The Claude check looks at the photo and the weather. It sees the run whether it is going ahead or the checks say skip, so a
+        // rain or wet-soil skip can be overruled when the pots are dry. Frost and wind are safety limits and never reach it.
+        const skipped = rainSkip !== null || !smart.run;
+        const advice = trigger === "schedule" && config.ai.enabled && !(!smart.run && smart.hard) ? await this.adviseWatering(config, weather, smart, rainSkip, now) : null;
+        const overruled = advice !== null && advice.cycles > 0 && skipped;
+        const review = advice && skipped && !overruled ? advice.note : ""; // what Claude said when a skip stands
+        const withReview = (reason: string) => (review ? `${reason}. ${review}` : reason);
+
+        if (rainSkip !== null && !overruled) {
+          const why = withReview(rainSkip);
+          await this.record({ at: now, trigger, outcome: "skipped-rain", wateredSeconds: 0, note: why });
+          const pending = extraRunEtMm === undefined && config.rain.catchUp ? newCatchUp(now, config.rain, nextRunAt(config, now, placeOf(this.env))) : null;
+          if (pending) await this.ctx.storage.put("catchUp", pending);
+          const later = pending ? ` After ${this.clock(pending.checkAt)} it checks whether the rain came and waters if not.` : "";
+          await notify(this.env, { title: "Valve: skipped for rain", message: `Scheduled run skipped. ${sentence(why)}${later}`, tags: ["cloud_with_rain"] });
+          await this.heartbeat(trigger, "ok", `skipped for rain: ${why}`);
+          return { ok: true, message: `skipped: ${why}` };
+        }
+        if (!smart.run && !overruled) {
+          const why = withReview(smart.reasons.join(" "));
           await this.record({ at: now, trigger, outcome: "skipped-weather", wateredSeconds: 0, note: why });
           await notify(this.env, { title: "Valve: skipped for the weather", message: `${trigger === "schedule" ? "Scheduled" : "Catch-up"} run skipped. ${why}`, tags: ["warning"] });
           await this.heartbeat(trigger, "ok", `skipped for the weather: ${why}`);
           return { ok: true, message: `skipped: ${why}` };
         }
-        cycles = smart.cycles;
-        scaling = smart.reasons.length ? ` ${smart.reasons.join(" ")}` : "";
+        if (advice?.cycles === 0) {
+          // the checks were going to water and Claude chose not to
+          await this.record({ at: now, trigger, outcome: "skipped-weather", wateredSeconds: 0, note: advice.note });
+          await notify(this.env, { title: "Valve: skipped by Claude", message: `Scheduled run skipped. ${advice.note}`, tags: ["seedling"], image: advice.jpeg });
+          await this.heartbeat(trigger, "ok", `skipped by Claude: ${advice.note}`);
+          return { ok: true, message: `skipped: ${advice.note}` };
+        }
+
+        cycles = advice ? advice.cycles : smart.cycles;
+        if (overruled) scaling = ` The checks said to skip (${[rainSkip, ...(smart.run ? [] : smart.reasons)].filter(Boolean).join(" ")}).`;
+        else if (smart.reasons.length) scaling = ` ${smart.reasons.join(" ")}`;
+        if (advice) scaling += ` ${advice.note}`;
       }
     }
 
@@ -453,6 +497,59 @@ export class Controller extends DurableObject<Env> {
     await notify(this.env, { title: "Valve: started", message: `${trigger} run. ${plan}${rainNote}${scaling}`, tags: ["droplet"] });
     await this.heartbeat(trigger, "start", plan);
     return { ok: true, message: `started: ${plan}` };
+  }
+
+  /**
+   * Before a scheduled run: have a Claude model look at the garden and the weather. Never throws and never blocks the run:
+   * when it cannot decide, the plan stands and the note says why. `cycles` of 0 means skip. `rainSkip` is the rain check's
+   * reason when it says to skip, and a plan that is not running is a skip too, so a skip can be confirmed or overruled.
+   */
+  private async adviseWatering(config: Config, weather: WeatherBundle, smart: SmartPlan, rainSkip: string | null, now: number): Promise<{ cycles: number; note: string; jpeg?: Uint8Array } | null> {
+    const skipWhy = [rainSkip, ...(smart.run ? [] : smart.reasons)].filter(Boolean).join(" ");
+    const planned = skipWhy ? 0 : smart.cycles;
+    const stands = planned === 0 ? "the skip stands" : `the planned ${cycleCount(planned)} apply`;
+    if (!this.env.ANTHROPIC_API_KEY) return { cycles: planned, note: `Claude check is on but there is no ANTHROPIC_API_KEY, so ${stands}.` };
+    try {
+      const photo = await this.advisorPhoto(now);
+      if (!photo) return { cycles: planned, note: `No recent photo for the Claude check, so ${stands}.` };
+      // Overruling a skip waters your normal amount at most; a run that was going ahead may go up to "never above".
+      const max = planned === 0 ? config.cycles : Math.min(20, Math.max(smart.cycles, Math.ceil((config.cycles * config.smart.maxPercent) / 100)));
+      const advice = await askWatering(this.env, {
+        jpeg: photo.jpeg,
+        photoNote: photo.note,
+        now,
+        timeZone: this.env.TIMEZONE,
+        weather: weather.data,
+        planned: { cycles: planned, base: config.cycles, max, why: skipWhy || smart.reasons.join(" ") },
+        onMinutes: config.onMinutes,
+        soakMinutes: config.soakMinutes,
+        history: (await this.ctx.storage.get<HistoryEntry[]>("history")) ?? [],
+        plants: photo.plants,
+      });
+      const change = advice.cycles === planned || advice.cycles === 0 ? "" : planned === 0 ? ` (${cycleCount(advice.cycles)} instead of skipping)` : ` (${cycleCount(advice.cycles)} instead of ${planned})`;
+      return { cycles: advice.cycles, note: `Claude: ${sentence(advice.reason)}${change}`, jpeg: photo.jpeg };
+    } catch (e) {
+      return { cycles: planned, note: `Claude check failed (${message(e)}), so ${stands}.` };
+    }
+  }
+
+  /** The pre-run frame if it is recent, else the latest daily photo if it is from today or yesterday, with what the camera said about the plants. */
+  private async advisorPhoto(now: number): Promise<{ jpeg: Uint8Array; note: string; plants?: string } | null> {
+    const days = (await this.ctx.storage.get<CameraDay[]>("cam:days")) ?? [];
+    const last = days.at(-1);
+    const growth = await this.ctx.storage.get<Growth>("cam:growth");
+    const plants = [last?.plant, ...(last?.pots ?? []).map((p) => `${p.pot}: ${p.note}`), growth && `Over the past days: ${growth.summary}`].filter(Boolean).join(" ") || undefined;
+
+    const pre = await this.ctx.storage.get<{ at: number }>("cam:precheck");
+    const preImage = pre && (await this.ctx.storage.get<ArrayBuffer>("cam:precheck:img"));
+    if (pre && preImage && now >= pre.at && now - pre.at <= PRECHECK_MAX_AGE_MS) {
+      return { jpeg: new Uint8Array(preImage), note: `taken ${Math.max(1, Math.round((now - pre.at) / 60_000))} min ago, just before this run`, plants };
+    }
+    if (last && daysBetween(last.date, localDate(now, this.env.TIMEZONE)) <= 1) {
+      const image = await this.ctx.storage.get<ArrayBuffer>(`cam:img:${last.date}`);
+      if (image) return { jpeg: new Uint8Array(image), note: `the daily photo from ${last.date}, taken around ${this.timelapseHour()}:00, so it may be up to a day old and no fresh photo arrived`, plants };
+    }
+    return null;
   }
 
   private clock(at: number): string {

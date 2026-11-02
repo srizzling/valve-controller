@@ -230,6 +230,14 @@ describe("saved configs and the new settings", () => {
     expect(c.schedules[0]).toEqual({ days: [1, 2], at: "dawn", time: "00:00", beforeSunriseMin: 20 });
   });
 
+  it("keeps the Claude check off until it is switched on, and fills it in for a config saved before it existed", () => {
+    expect(defaultConfig.ai.enabled).toBe(false);
+    const { ai: _ai, ...old } = defaultConfig;
+    expect(normalizeConfig(old).ai).toEqual({ enabled: false });
+    expect(validateConfig({ ...defaultConfig, ai: { enabled: true } }).ai).toEqual({ enabled: true });
+    expect(validateConfig({ ...defaultConfig, ai: { enabled: "yes" } }).ai).toEqual({ enabled: false });
+  });
+
   it("lets startRun override the number of cycles without touching the minutes", () => {
     const run = startRun({ ...defaultConfig, onMinutes: 10, soakMinutes: 5 }, "schedule", 0, 5);
     expect(run).toMatchObject({ cycles: 5, onSeconds: 600, soakSeconds: 300 });

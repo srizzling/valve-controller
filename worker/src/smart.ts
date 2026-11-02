@@ -17,6 +17,7 @@ export interface SmartPlan {
   cycles: number;
   percent: number; // of normal
   reasons: string[]; // plain sentences, shown in the notification and the UI
+  hard?: boolean; // a frost or wind stop: a safety limit that nothing, including the Claude check, may overrule
 }
 
 const HOUR = 3_600_000;
@@ -50,14 +51,14 @@ export function inputsAt(forecast: Forecast, at: number, timeZone: string): Smar
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 export function smartPlan(cfg: SmartConfig, baseCycles: number, input: SmartInput): SmartPlan {
-  const skip = (reason: string): SmartPlan => ({ run: false, cycles: 0, percent: 0, reasons: [reason] });
+  const skip = (reason: string, hard = false): SmartPlan => ({ run: false, cycles: 0, percent: 0, reasons: [reason], ...(hard ? { hard: true } : {}) });
 
   // Safety gates come first, whether or not scaling is switched on.
   if (cfg.frost.enabled && input.tempMinC !== undefined && input.tempMinC < cfg.frost.belowC) {
-    return skip(`Frost risk: ${round1(input.tempMinC)}°C at the start, below your ${cfg.frost.belowC}°C limit.`);
+    return skip(`Frost risk: ${round1(input.tempMinC)}°C at the start, below your ${cfg.frost.belowC}°C limit.`, true);
   }
   if (cfg.wind.enabled && input.windKmh !== undefined && input.windKmh > cfg.wind.maxKmh) {
-    return skip(`Too windy: ${Math.round(input.windKmh)} km/h at the start, above your ${cfg.wind.maxKmh} km/h limit.`);
+    return skip(`Too windy: ${Math.round(input.windKmh)} km/h at the start, above your ${cfg.wind.maxKmh} km/h limit.`, true);
   }
   if (!cfg.enabled) return { run: true, cycles: baseCycles, percent: 100, reasons: [] };
   if (input.etMm === undefined) {
