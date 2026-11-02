@@ -255,7 +255,9 @@
 
     <section class="card" id="camera" aria-label="Garden camera" hidden>
       <div class="card-head"><h2>Camera</h2><span id="cam-when" class="muted small"></span></div>
-      <img id="cam-img" class="cam-img" alt="The latest photo of the valve and plant" hidden>
+      <div id="cam-pots" class="pot-tabs" role="group" aria-label="Which plant to show" hidden></div>
+      <div id="cam-frame" class="cam-frame"><img id="cam-img" class="cam-img" alt="The latest photo of the garden" hidden></div>
+      <p id="cam-pot-note" class="small" role="status" hidden></p>
       <p id="cam-offline" class="cam-verdict bad" role="status" hidden></p>
       <p id="cam-verdict" class="cam-verdict" role="status"></p>
       <div class="actions"><button id="cam-snap" class="btn btn-ghost" type="button">Take a photo now</button></div>
@@ -263,6 +265,10 @@
         <div class="lapse-head"><span id="lapse-date" class="small"></span><button id="lapse-play" class="btn btn-ghost" type="button">Play</button></div>
         <input id="lapse-range" type="range" min="0" value="0" aria-label="Day of the timelapse">
         <p id="lapse-note" class="muted small"></p>
+      </div>
+      <div id="growth" class="lapse" hidden>
+        <div class="lapse-head"><span class="small">Growth</span><span id="growth-range" class="muted small"></span></div>
+        <p id="growth-text" class="small"></p>
       </div>
     </section>
 

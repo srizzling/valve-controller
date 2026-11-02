@@ -25,15 +25,16 @@ const hostOf = (url: string) => new URL(url).host;
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]).buffer;
 const baseEnv = { TIMEZONE: "Australia/Melbourne", LATITUDE: "-37.81", LONGITUDE: "144.96", NTFY_URL: "https://ntfy.test", NTFY_TOPIC: "t", ANTHROPIC_API_KEY: "k", ANTHROPIC_BASE_URL: "https://claude.test" };
 
-function make(verdict: object | null) {
+function make(verdict: object | null, env: object = {}, growth: object | null = { summary: "Bushier" }) {
   const storage = fakeStorage();
   const calls: { url: string; method?: string; headers: Headers }[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
     calls.push({ url, method: init.method, headers: new Headers(init.headers) });
+    if (hostOf(url) === "claude.test" && JSON.parse(init.body as string).tools[0].name === "growth") return growth ? Response.json({ content: [{ type: "tool_use", name: "growth", input: growth }] }) : new Response("busy", { status: 529 });
     if (hostOf(url) === "claude.test") return verdict ? Response.json({ content: [{ type: "tool_use", name: "report", input: verdict }] }) : new Response("busy", { status: 529 });
     return new Response("ok");
   });
-  const c = new Controller({ storage } as never, baseEnv as never);
+  const c = new Controller({ storage } as never, { ...baseEnv, ...env } as never);
   return { c, storage, calls, ntfy: () => calls.filter((x) => hostOf(x.url) === "ntfy.test") };
 }
 
@@ -83,6 +84,53 @@ describe("Controller camera", () => {
     expect(await c.cameraImage(days[0].date)).toEqual(jpeg);
     expect(await c.cameraWanted()).not.toBe("timelapse");
     expect(await c.cameraImage("../etc")).toBeNull();
+  });
+
+  it("keeps each pot's note with the day, and tells the page where the pots are", async () => {
+    const pots = JSON.stringify([{ name: "Mint", where: "small black pot", box: [0.3, 0.4, 0.1, 0.1] }]);
+    const { c } = make({ leak: false, summary: "Dry", pots: [{ pot: "Mint", note: "Bushy" }] }, { CAMERA_POTS: pots });
+    await c.cameraFrame("timelapse", jpeg);
+    const overview = await c.cameraOverview();
+    expect(overview.days[0].pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+    expect(overview.latest?.verdict?.pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+    expect(overview.pots.map((p) => p.name)).toEqual(["Mint"]);
+  });
+
+  // An old photo is put straight into storage so the test does not depend on today's date.
+  const seedOldDay = async (storage: ReturnType<typeof fakeStorage>, date: string) => {
+    await storage.put("cam:days", [{ date }]);
+    await storage.put(`cam:img:${date}`, new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9]).buffer);
+  };
+
+  it("compares the daily photo with an old one and shows the summary", async () => {
+    const { c, storage, calls } = make({ leak: false, summary: "Dry" }, {}, { summary: "Mint is bushier" });
+    await seedOldDay(storage, "2020-01-01");
+    await c.cameraFrame("timelapse", jpeg);
+    const { growth } = await c.cameraOverview();
+    expect(growth).toMatchObject({ from: "2020-01-01", summary: "Mint is bushier" });
+    expect(calls.filter((x) => hostOf(x.url) === "claude.test")).toHaveLength(2); // the leak check and the comparison
+  });
+
+  it("has no growth summary on the first days, and does not ask the model for one", async () => {
+    const { c, calls } = make({ leak: false, summary: "Dry" });
+    await c.cameraFrame("timelapse", jpeg);
+    expect((await c.cameraOverview()).growth).toBeNull();
+    expect(calls.filter((x) => hostOf(x.url) === "claude.test")).toHaveLength(1);
+  });
+
+  it("keeps the photo and the last summary when the comparison fails", async () => {
+    const { c, storage } = make({ leak: false, summary: "Dry" }, {}, null);
+    await seedOldDay(storage, "2020-01-01");
+    await storage.put("cam:growth", { from: "2019-12-25", to: "2019-12-31", summary: "Earlier summary" });
+    await c.cameraFrame("timelapse", jpeg);
+    const overview = await c.cameraOverview();
+    expect(overview.growth?.summary).toBe("Earlier summary");
+    expect(overview.days).toHaveLength(2);
+  });
+
+  it("has no pots to show until some are configured", async () => {
+    const { c } = make({ leak: false, summary: "Dry" });
+    expect((await c.cameraOverview()).pots).toEqual([]);
   });
 
   it("asks for a photo after the UI requests one, and stops once it arrives", async () => {

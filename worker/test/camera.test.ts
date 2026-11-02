@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { systemFor, AFTER_DELAY_MS, AFTER_WINDOW_MS, DURING_DELAY_MS, MANUAL_WINDOW_MS, POLL_STALE_MS, scriptStale, askVision, duringKey, isJpeg, noMarks, parseVerdict, toBase64, wantedFrame } from "../src/camera";
+import { systemFor, AFTER_DELAY_MS, AFTER_WINDOW_MS, DURING_DELAY_MS, MANUAL_WINDOW_MS, POLL_STALE_MS, scriptStale, askVision, duringKey, isJpeg, noMarks, parsePots, parseVerdict, toBase64, wantedFrame, askGrowth, growthBaseline, daysBetween, parseGrowth } from "../src/camera";
 import { idleState, startRun, defaultConfig } from "../src/plan";
 
 const TZ = "Australia/Melbourne";
@@ -123,5 +123,129 @@ describe("scriptStale", () => {
   it("is a fault once it has been quiet for longer than the limit", () => {
     expect(scriptStale(1000, 1000 + POLL_STALE_MS)).toBe(false);
     expect(scriptStale(1000, 1001 + POLL_STALE_MS)).toBe(true);
+  });
+});
+
+const POTS = JSON.stringify([
+  { name: "Mint", where: "small black pot, right", box: [0.32, 0.4, 0.07, 0.12] },
+  { name: "Lemon tree", where: "big black pot, centre", box: [0.25, 0.36, 0.1, 0.2] },
+]);
+
+describe("parsePots", () => {
+  it("reads the list", () => {
+    expect(parsePots(POTS)).toEqual([
+      { name: "Mint", where: "small black pot, right", box: [0.32, 0.4, 0.07, 0.12] },
+      { name: "Lemon tree", where: "big black pot, centre", box: [0.25, 0.36, 0.1, 0.2] },
+    ]);
+  });
+  it("is empty when nothing is set or it is not JSON, so a typo cannot take the Worker down", () => {
+    expect(parsePots(undefined)).toEqual([]);
+    expect(parsePots("  ")).toEqual([]);
+    expect(parsePots("{not json")).toEqual([]);
+    expect(parsePots('{"name":"Mint"}')).toEqual([]);
+  });
+  it("drops a pot with no name, a repeated name, or a box that is not inside the frame", () => {
+    const bad = JSON.stringify([
+      { name: "", box: [0, 0, 0.1, 0.1] },
+      { name: "Mint", box: [0, 0, 0.1, 0.1] },
+      { name: "mint", box: [0.5, 0.5, 0.1, 0.1] },
+      { name: "Wide", box: [0.5, 0, 0.6, 0.1] },
+      { name: "Flat", box: [0, 0, 0.1, 0] },
+      { name: "Short", box: [0, 0, 0.1] },
+      { name: "Text", box: ["0", 0, 0.1, 0.1] },
+      null,
+    ]);
+    expect(parsePots(bad).map((p) => p.name)).toEqual(["Mint"]);
+  });
+});
+
+describe("pots in the model call", () => {
+  const pots = parsePots(POTS);
+  it("tells the model how to tell the pots apart", () => {
+    expect(systemFor("scene", pots)).toContain("Mint (small black pot, right); Lemon tree (big black pot, centre)");
+    expect(systemFor("scene")).not.toContain("The pots");
+  });
+  it("keeps only notes for pots we listed, once each, spelled our way", () => {
+    const v = parseVerdict(reply({ leak: false, summary: "Fine", pots: [{ pot: "mint", note: " Bushy " }, { pot: "Mint", note: "again" }, { pot: "Cactus", note: "invented" }, { pot: "Lemon tree", note: " " }] }), pots);
+    expect(v.pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+  });
+  it("has no pots in the verdict when none are configured", () => {
+    expect(parseVerdict(reply({ leak: false, summary: "Fine", pots: [{ pot: "Mint", note: "x" }] }))).toEqual({ leak: false, summary: "Fine" });
+  });
+
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const env = { ANTHROPIC_API_KEY: "key", ANTHROPIC_BASE_URL: "https://fake.test", CAMERA_POTS: POTS } as never;
+  const sent = async (kind: "during" | "timelapse" | "manual") => {
+    let body: any;
+    const fake = (async (_u: string, init: RequestInit) => ((body = JSON.parse(init.body as string)), Response.json(reply({ leak: false, summary: "Fine", pots: [{ pot: "Mint", note: "Bushy" }] })))) as never;
+    const verdict = await askVision(env, kind, false, jpeg, fake);
+    return { body, verdict };
+  };
+
+  it("asks for a note per pot on the daily photo and a photo you asked for", async () => {
+    for (const kind of ["timelapse", "manual"] as const) {
+      const { body, verdict } = await sent(kind);
+      expect(body.tools[0].input_schema.properties.pots.items.properties.pot.enum).toEqual(["Mint", "Lemon tree"]);
+      expect(body.system).toContain("small black pot, right");
+      expect(verdict.pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+    }
+  });
+  it("leaves the pots out of a leak check", async () => {
+    const { body, verdict } = await sent("during");
+    expect(body.tools[0].input_schema.properties.pots).toBeUndefined();
+    expect(verdict.pots).toBeUndefined();
+  });
+});
+
+describe("growthBaseline", () => {
+  it("is the newest photo that is at least a week old", () => {
+    expect(growthBaseline(["2026-10-01", "2026-10-20", "2026-10-24", "2026-10-30"], "2026-11-01")).toBe("2026-10-24");
+    expect(growthBaseline(["2026-10-25"], "2026-11-01")).toBe("2026-10-25");
+  });
+  it("falls back to the oldest photo once it is three days old, and waits before that", () => {
+    expect(growthBaseline(["2026-10-30", "2026-10-29"], "2026-11-01")).toBe("2026-10-29");
+    expect(growthBaseline(["2026-10-30", "2026-10-31"], "2026-11-01")).toBeNull();
+    expect(growthBaseline([], "2026-11-01")).toBeNull();
+  });
+  it("never compares a photo with itself or a later one", () => {
+    expect(growthBaseline(["2026-11-01", "2026-11-02"], "2026-11-01")).toBeNull();
+  });
+  it("counts whole days", () => {
+    expect(daysBetween("2026-10-25", "2026-11-01")).toBe(7);
+  });
+});
+
+describe("growth", () => {
+  const pots = parsePots(POTS);
+  const growthReply = (input: object) => ({ content: [{ type: "tool_use", name: "growth", input }] });
+  const jpegA = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1]);
+  const jpegB = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 2]);
+  const env = { ANTHROPIC_API_KEY: "key", ANTHROPIC_BASE_URL: "https://fake.test", CAMERA_POTS: POTS } as never;
+
+  it("reads the report, keeping only notes for known pots", () => {
+    const g = parseGrowth(growthReply({ summary: " The mint has filled out. ", pots: [{ pot: "mint", note: "Twice as bushy" }, { pot: "Cactus", note: "?" }] }), pots, "2026-10-25", "2026-11-01");
+    expect(g).toEqual({ from: "2026-10-25", to: "2026-11-01", summary: "The mint has filled out.", pots: [{ pot: "Mint", note: "Twice as bushy" }] });
+  });
+  it("treats a reply without a summary as an error", () => {
+    expect(() => parseGrowth(growthReply({ summary: " " }), pots, "a", "b")).toThrow();
+    expect(() => parseGrowth({ content: [] }, pots, "a", "b")).toThrow();
+  });
+  it("sends both photos, oldest first, with their dates", async () => {
+    let body: any;
+    const fake = (async (_u: string, init: RequestInit) => ((body = JSON.parse(init.body as string)), Response.json(growthReply({ summary: "Bushier" })))) as never;
+    const g = await askGrowth(env, "2026-10-25", "2026-11-01", jpegA, jpegB, fake);
+    expect(g.summary).toBe("Bushier");
+    const parts = body.messages[0].content;
+    expect(parts[0].text).toContain("2026-10-25");
+    expect(parts[1].source.data).toBe(toBase64(jpegA));
+    expect(parts[2].text).toContain("2026-11-01");
+    expect(parts[2].text).toContain("7 days");
+    expect(parts[3].source.data).toBe(toBase64(jpegB));
+    expect(body.tool_choice).toEqual({ type: "tool", name: "growth" });
+    expect(body.system).toContain("small black pot, right");
+  });
+  it("says so when there is no key or the model errors", async () => {
+    await expect(askGrowth({} as never, "a", "b", jpegA, jpegB)).rejects.toThrow(/ANTHROPIC_API_KEY/);
+    await expect(askGrowth(env, "a", "b", jpegA, jpegB, (async () => new Response("no", { status: 529 })) as never)).rejects.toThrow(/529/);
   });
 });

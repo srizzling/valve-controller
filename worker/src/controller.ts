@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { AFTER_DELAY_MS, DEFAULT_TIMELAPSE_HOUR, MAX_FRAME_BYTES, askVision, duringKey, isJpeg, noMarks, scriptStale, wantedFrame } from "./camera";
-import type { CameraMarks, FrameKind, FrameMeta } from "./camera";
+import { AFTER_DELAY_MS, DEFAULT_TIMELAPSE_HOUR, MAX_FRAME_BYTES, askGrowth, askVision, duringKey, growthBaseline, isJpeg, noMarks, parsePots, scriptStale, wantedFrame } from "./camera";
+import type { CameraMarks, FrameKind, FrameMeta, Growth, Pot, PotNote, Verdict } from "./camera";
 import { catchUpStep, forcedAfterRainSkip, newCatchUp } from "./catchup";
 import type { CatchUp } from "./catchup";
 import type { Env } from "./env";
@@ -41,12 +41,15 @@ export interface Status {
 export interface CameraDay {
   date: string;
   plant?: string; // the model's note on how the plant looked that day
+  pots?: PotNote[]; // and one for each pot
 }
 
 export interface CameraOverview {
   latest: FrameMeta | null;
   leak: FrameMeta | null; // the last frame that looked like a fault
   days: CameraDay[]; // oldest first
+  pots: Pot[]; // where each plant is in the frame, for the one-plant view
+  growth: Growth | null; // how the plants changed since a week ago, as of the last daily photo
   checks: boolean; // whether frames are checked for leaks (an API key is set)
   lastPollAt: number | null; // when the camera script last asked what to capture
 }
@@ -216,7 +219,10 @@ export class Controller extends DurableObject<Env> {
     }
 
     await this.ctx.storage.put({ "cam:latest": meta, "cam:latest:img": image });
-    if (kind === "timelapse") await this.keepDay(today, image, meta.verdict?.plant);
+    if (kind === "timelapse") {
+      await this.keepDay(today, image, meta.verdict);
+      await this.updateGrowth(today, image);
+    }
     if (meta.verdict?.leak) {
       await this.ctx.storage.put({ "cam:leak": meta, "cam:leak:img": image });
       const key = `${kind}:${state.startedAt || today}`;
@@ -230,22 +236,37 @@ export class Controller extends DurableObject<Env> {
     return meta;
   }
 
-  private async keepDay(date: string, image: ArrayBuffer, plant?: string): Promise<void> {
+  private async keepDay(date: string, image: ArrayBuffer, verdict?: Verdict): Promise<void> {
     const days = ((await this.ctx.storage.get<CameraDay[]>("cam:days")) ?? []).filter((d) => d.date !== date);
-    days.push({ date, ...(plant ? { plant } : {}) });
+    days.push({ date, ...(verdict?.plant ? { plant: verdict.plant } : {}), ...(verdict?.pots ? { pots: verdict.pots } : {}) });
     days.sort((a, b) => a.date.localeCompare(b.date));
     const dropped = days.splice(0, Math.max(0, days.length - DAYS_KEPT));
     await this.ctx.storage.put({ "cam:days": days, [`cam:img:${date}`]: image });
     if (dropped.length) await this.ctx.storage.delete(dropped.map((d) => `cam:img:${d.date}`));
   }
 
+  /** Compare today's daily photo with one from about a week ago. A failure keeps the last summary: growth is nice to have, never a reason to lose the photo. */
+  private async updateGrowth(today: string, image: ArrayBuffer): Promise<void> {
+    if (!this.env.ANTHROPIC_API_KEY) return;
+    try {
+      const days = (await this.ctx.storage.get<CameraDay[]>("cam:days")) ?? [];
+      const from = growthBaseline(days.map((d) => d.date), today);
+      const before = from && (await this.ctx.storage.get<ArrayBuffer>(`cam:img:${from}`));
+      if (!from || !before) return;
+      await this.ctx.storage.put("cam:growth", await askGrowth(this.env, from, today, new Uint8Array(before), new Uint8Array(image)));
+    } catch (e) {
+      console.error("growth summary failed", message(e));
+    }
+  }
+
   async cameraOverview(): Promise<CameraOverview> {
-    const [latest, leak, days] = await Promise.all([
+    const [latest, leak, days, growth] = await Promise.all([
       this.ctx.storage.get<FrameMeta>("cam:latest"),
       this.ctx.storage.get<FrameMeta>("cam:leak"),
       this.ctx.storage.get<CameraDay[]>("cam:days"),
+      this.ctx.storage.get<Growth>("cam:growth"),
     ]);
-    return { latest: latest ?? null, leak: leak ?? null, days: days ?? [], checks: Boolean(this.env.ANTHROPIC_API_KEY), lastPollAt: (await this.ctx.storage.get<number>("cam:polled")) ?? null };
+    return { latest: latest ?? null, leak: leak ?? null, days: days ?? [], pots: parsePots(this.env.CAMERA_POTS), growth: growth ?? null, checks: Boolean(this.env.ANTHROPIC_API_KEY), lastPollAt: (await this.ctx.storage.get<number>("cam:polled")) ?? null };
   }
 
   /** If the camera script was running and has gone quiet, say so once: leak checks silently stop while it is down. */
