@@ -653,7 +653,7 @@ async function act(path, okText) {
 
 /* ───────────────────────── camera ───────────────────────── */
 
-let camera = null; // {latest, leak, days, pots, checks} from /api/camera
+let camera = null; // {latest, leak, days, pots, growth, checks} from /api/camera
 let lapseTimer = null;
 let selectedPot = null; // a pot's name, or null for the whole garden
 let shownDay = null; // the timelapse day on screen, or null for the latest photo
@@ -681,6 +681,12 @@ function applyPot() {
   const note = pot ? ((day ? day.pots : camera?.latest?.verdict?.pots) ?? []).find((n) => n.pot === pot.name)?.note : "";
   $("cam-pot-note").hidden = !pot;
   $("cam-pot-note").textContent = pot ? (note ?? (camera?.checks ? "No note on this plant for this photo." : "Notes need the Anthropic key.")) : "";
+  const g = camera?.growth;
+  $("growth").hidden = !g;
+  if (g) {
+    $("growth-range").textContent = `${g.from} to ${g.to}`;
+    $("growth-text").textContent = pot ? (g.pots?.find((n) => n.pot === pot.name)?.note ?? "Nothing to say about this plant in the comparison.") : g.summary;
+  }
   for (const b of $("cam-pots").children) b.setAttribute("aria-pressed", String((b.dataset.pot || null) === selectedPot));
 }
 

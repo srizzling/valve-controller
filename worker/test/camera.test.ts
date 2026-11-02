@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { systemFor, AFTER_DELAY_MS, AFTER_WINDOW_MS, DURING_DELAY_MS, MANUAL_WINDOW_MS, POLL_STALE_MS, scriptStale, askVision, duringKey, isJpeg, noMarks, parsePots, parseVerdict, toBase64, wantedFrame } from "../src/camera";
+import { systemFor, AFTER_DELAY_MS, AFTER_WINDOW_MS, DURING_DELAY_MS, MANUAL_WINDOW_MS, POLL_STALE_MS, scriptStale, askVision, duringKey, isJpeg, noMarks, parsePots, parseVerdict, toBase64, wantedFrame, askGrowth, growthBaseline, daysBetween, parseGrowth } from "../src/camera";
 import { idleState, startRun, defaultConfig } from "../src/plan";
 
 const TZ = "Australia/Melbourne";
@@ -194,5 +194,58 @@ describe("pots in the model call", () => {
     const { body, verdict } = await sent("during");
     expect(body.tools[0].input_schema.properties.pots).toBeUndefined();
     expect(verdict.pots).toBeUndefined();
+  });
+});
+
+describe("growthBaseline", () => {
+  it("is the newest photo that is at least a week old", () => {
+    expect(growthBaseline(["2026-10-01", "2026-10-20", "2026-10-24", "2026-10-30"], "2026-11-01")).toBe("2026-10-24");
+    expect(growthBaseline(["2026-10-25"], "2026-11-01")).toBe("2026-10-25");
+  });
+  it("falls back to the oldest photo once it is three days old, and waits before that", () => {
+    expect(growthBaseline(["2026-10-30", "2026-10-29"], "2026-11-01")).toBe("2026-10-29");
+    expect(growthBaseline(["2026-10-30", "2026-10-31"], "2026-11-01")).toBeNull();
+    expect(growthBaseline([], "2026-11-01")).toBeNull();
+  });
+  it("never compares a photo with itself or a later one", () => {
+    expect(growthBaseline(["2026-11-01", "2026-11-02"], "2026-11-01")).toBeNull();
+  });
+  it("counts whole days", () => {
+    expect(daysBetween("2026-10-25", "2026-11-01")).toBe(7);
+  });
+});
+
+describe("growth", () => {
+  const pots = parsePots(POTS);
+  const growthReply = (input: object) => ({ content: [{ type: "tool_use", name: "growth", input }] });
+  const jpegA = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1]);
+  const jpegB = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 2]);
+  const env = { ANTHROPIC_API_KEY: "key", ANTHROPIC_BASE_URL: "https://fake.test", CAMERA_POTS: POTS } as never;
+
+  it("reads the report, keeping only notes for known pots", () => {
+    const g = parseGrowth(growthReply({ summary: " The mint has filled out. ", pots: [{ pot: "mint", note: "Twice as bushy" }, { pot: "Cactus", note: "?" }] }), pots, "2026-10-25", "2026-11-01");
+    expect(g).toEqual({ from: "2026-10-25", to: "2026-11-01", summary: "The mint has filled out.", pots: [{ pot: "Mint", note: "Twice as bushy" }] });
+  });
+  it("treats a reply without a summary as an error", () => {
+    expect(() => parseGrowth(growthReply({ summary: " " }), pots, "a", "b")).toThrow();
+    expect(() => parseGrowth({ content: [] }, pots, "a", "b")).toThrow();
+  });
+  it("sends both photos, oldest first, with their dates", async () => {
+    let body: any;
+    const fake = (async (_u: string, init: RequestInit) => ((body = JSON.parse(init.body as string)), Response.json(growthReply({ summary: "Bushier" })))) as never;
+    const g = await askGrowth(env, "2026-10-25", "2026-11-01", jpegA, jpegB, fake);
+    expect(g.summary).toBe("Bushier");
+    const parts = body.messages[0].content;
+    expect(parts[0].text).toContain("2026-10-25");
+    expect(parts[1].source.data).toBe(toBase64(jpegA));
+    expect(parts[2].text).toContain("2026-11-01");
+    expect(parts[2].text).toContain("7 days");
+    expect(parts[3].source.data).toBe(toBase64(jpegB));
+    expect(body.tool_choice).toEqual({ type: "tool", name: "growth" });
+    expect(body.system).toContain("small black pot, right");
+  });
+  it("says so when there is no key or the model errors", async () => {
+    await expect(askGrowth({} as never, "a", "b", jpegA, jpegB)).rejects.toThrow(/ANTHROPIC_API_KEY/);
+    await expect(askGrowth(env, "a", "b", jpegA, jpegB, (async () => new Response("no", { status: 529 })) as never)).rejects.toThrow(/529/);
   });
 });
