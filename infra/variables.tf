@@ -111,6 +111,12 @@ variable "camera_scene" {
   description = "What the camera looks at, told to the model, for example: potted lemon tree, mint, coriander and two roses on artificial grass; the drip line runs along the fence."
 }
 
+variable "camera_pots" {
+  type        = string
+  default     = ""
+  description = "JSON list of the plant pots in the camera frame, for the one-plant view: [{\"name\":\"Mint\",\"where\":\"small black pot, right\",\"box\":[x,y,width,height]}], the box as fractions of the frame (0 to 1)."
+}
+
 variable "camera_model" {
   type        = string
   default     = ""

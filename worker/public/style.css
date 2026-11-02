@@ -394,7 +394,14 @@ button.chip.action { cursor: pointer; pointer-events: auto; } /* .hud-bottom ign
 .reconnect .row { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* ───────────── camera ───────────── */
-.cam-img { display: block; width: 100%; border-radius: 14px; background: #0f1a2c; }
+[hidden] { display: none !important; } /* a class that sets display would otherwise beat the hidden attribute */
+.cam-frame { position: relative; overflow: hidden; border-radius: 14px; background: #0f1a2c; }
+.cam-img { display: block; width: 100%; }
+.cam-frame.crop .cam-img { position: absolute; max-width: none; } /* app.js sets its size and offset so one pot fills the frame */
+.pot-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.pot-tab { font: inherit; font-size: .82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+.pot-tab[aria-pressed="true"] { color: var(--text); border-color: var(--grass); background: #6cc24a1f; }
+#cam-pot-note { margin: 10px 0 0; color: var(--text); }
 .cam-verdict { margin: 10px 0; font-size: .92rem; }
 .cam-verdict.bad { color: #ff9b9b; font-weight: 700; }
 .lapse { margin-top: 14px; border-top: 1px solid #1f2f4b; padding-top: 12px; }

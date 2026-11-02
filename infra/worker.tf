@@ -18,6 +18,7 @@ locals {
     CAMERA_TIMELAPSE_HOUR = var.camera_timelapse_hour
     CAMERA_MODEL          = var.camera_model
     CAMERA_SCENE          = var.camera_scene
+    CAMERA_POTS           = var.camera_pots
   }
 
   worker_secrets = merge(

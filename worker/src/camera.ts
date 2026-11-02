@@ -30,6 +30,42 @@ export interface Verdict {
   leak: boolean;
   summary: string; // one sentence on what the camera shows
   plant?: string; // one sentence on how the plants look
+  pots?: PotNote[]; // the same, one per configured pot
+}
+
+export interface PotNote {
+  pot: string;
+  note: string;
+}
+
+/** One plant pot in the frame. `box` is x, y, width, height as fractions of the frame, so it does not depend on the photo size. */
+export interface Pot {
+  name: string;
+  where: string; // how to tell it from the others, for the model: "big black pot, centre"
+  box: [number, number, number, number];
+}
+
+const MAX_POTS = 12;
+
+/** Reads CAMERA_POTS (a JSON list). Anything that is not a usable pot is dropped, so a typo costs one pot and not the Worker. */
+export function parsePots(json?: string): Pot[] {
+  let raw: unknown;
+  try {
+    raw = json?.trim() ? JSON.parse(json) : [];
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  const pots: Pot[] = [];
+  for (const r of raw.slice(0, MAX_POTS)) {
+    const { name, where, box } = (r ?? {}) as { name?: unknown; where?: unknown; box?: unknown };
+    if (typeof name !== "string" || !name.trim() || pots.some((p) => p.name.toLowerCase() === name.trim().toLowerCase())) continue;
+    if (!Array.isArray(box) || box.length !== 4 || !box.every((n) => typeof n === "number" && Number.isFinite(n))) continue;
+    const [x, y, w, h] = box as number[];
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > 1.001 || y + h > 1.001) continue;
+    pots.push({ name: name.trim().slice(0, 40), where: typeof where === "string" ? where.trim().slice(0, 120) : "", box: [x, y, w, h] });
+  }
+  return pots;
 }
 
 export interface FrameMeta {
@@ -90,15 +126,21 @@ const SYSTEM =
   "water pooling or running across the ground, or water flowing when the valve should be shut. Damp soil, a wet pot and a little " +
   "water running from a pot's drain hole are normal. If the picture is dark, blocked or too unclear to judge, say so and report no leak. Be brief.";
 
-/** The system prompt, with what the camera is looking at when the owner has said (CAMERA_SCENE). */
-export const systemFor = (scene?: string) => (scene?.trim() ? `${SYSTEM} In this garden: ${scene.trim().slice(0, 400)}` : SYSTEM);
+/** The system prompt, with what the camera is looking at when the owner has said (CAMERA_SCENE) and how to tell the pots apart. */
+export function systemFor(scene?: string, pots: Pot[] = []): string {
+  const base = scene?.trim() ? `${SYSTEM} In this garden: ${scene.trim().slice(0, 400)}` : SYSTEM;
+  if (!pots.length) return base;
+  return `${base} The pots, so you can say how each plant looks: ${pots.map((p) => (p.where ? `${p.name} (${p.where})` : p.name)).join("; ")}.`;
+}
 
 export function promptFor(kind: FrameKind, valveOpen: boolean): string {
   return `${CONTEXT[kind](valveOpen)} Report what the camera shows.`;
 }
 
-const TOOL = {
-  name: "report",
+const TOOL_NAME = "report";
+
+const toolFor = (pots: Pot[]) => ({
+  name: TOOL_NAME,
   description: "Report what the garden camera shows.",
   input_schema: {
     type: "object",
@@ -106,37 +148,57 @@ const TOOL = {
       leak: { type: "boolean", description: "True only if there is a visible fault: water where it should not be, a detached or burst hose or fitting, or water flowing while the valve is shut." },
       summary: { type: "string", description: "One short sentence on what you see around the valve and hose." },
       plant: { type: "string", description: "One short sentence on how the plants look: new growth, colour, wilting or yellowing, naming the plant when something stands out. Leave out if no plant is visible." },
+      ...(pots.length
+        ? {
+            pots: {
+              type: "array",
+              description: "One entry for each listed pot that can be seen, left out if it is hidden. Say what is growing and anything that changed: new leaves, flowers, fruit, yellowing, wilting, bare soil.",
+              items: { type: "object", properties: { pot: { type: "string", enum: pots.map((p) => p.name) }, note: { type: "string", description: "One short sentence." } }, required: ["pot", "note"] },
+            },
+          }
+        : {}),
     },
     required: ["leak", "summary"],
   },
-} as const;
+});
 
 /** Reads the tool call out of a Messages API reply. Anything unexpected is an error, never a quiet "no leak". */
-export function parseVerdict(reply: unknown): Verdict {
+export function parseVerdict(reply: unknown, pots: Pot[] = []): Verdict {
   const content = (reply as { content?: { type: string; name?: string; input?: Record<string, unknown> }[] })?.content;
-  const input = content?.find((c) => c.type === "tool_use" && c.name === TOOL.name)?.input;
+  const input = content?.find((c) => c.type === "tool_use" && c.name === TOOL_NAME)?.input;
   if (!input || typeof input.leak !== "boolean" || typeof input.summary !== "string") throw new Error("the model did not return a report");
   const verdict: Verdict = { leak: input.leak, summary: input.summary.slice(0, 300) };
   if (typeof input.plant === "string" && input.plant.trim()) verdict.plant = input.plant.slice(0, 300);
+  // Only notes for pots we listed, once each, in our own spelling: the model's other text never reaches the page as a pot name.
+  if (Array.isArray(input.pots)) {
+    const notes: PotNote[] = [];
+    for (const n of input.pots as { pot?: unknown; note?: unknown }[]) {
+      const pot = pots.find((p) => typeof n?.pot === "string" && p.name.toLowerCase() === n.pot.trim().toLowerCase());
+      if (pot && typeof n.note === "string" && n.note.trim() && !notes.some((x) => x.pot === pot.name)) notes.push({ pot: pot.name, note: n.note.trim().slice(0, 200) });
+    }
+    if (notes.length) verdict.pots = notes;
+  }
   return verdict;
 }
 
 /** Ask a Claude model to look at one frame. Throws when it cannot, so the caller can say the check did not happen. */
 export async function askVision(env: Env, kind: FrameKind, valveOpen: boolean, jpeg: Uint8Array, fetchImpl: typeof fetch = fetch): Promise<Verdict> {
   if (!env.ANTHROPIC_API_KEY) throw new Error("no ANTHROPIC_API_KEY, so frames are kept but not checked");
+  // A note on every plant is for the pages that show plants (the daily photo and a photo you asked for), not for the leak checks.
+  const pots = kind === "timelapse" || kind === "manual" ? parsePots(env.CAMERA_POTS) : [];
   const res = await fetchImpl(`${env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
       model: env.CAMERA_MODEL || "claude-haiku-5-5",
-      max_tokens: 300,
-      system: systemFor(env.CAMERA_SCENE),
-      tools: [TOOL],
-      tool_choice: { type: "tool", name: TOOL.name },
+      max_tokens: pots.length ? 700 : 300,
+      system: systemFor(env.CAMERA_SCENE, pots),
+      tools: [toolFor(pots)],
+      tool_choice: { type: "tool", name: TOOL_NAME },
       messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: toBase64(jpeg) } }, { type: "text", text: promptFor(kind, valveOpen) }] }],
     }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`the vision model answered ${res.status}`);
-  return parseVerdict(await res.json());
+  return parseVerdict(await res.json(), pots);
 }

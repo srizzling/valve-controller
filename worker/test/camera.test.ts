@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { systemFor, AFTER_DELAY_MS, AFTER_WINDOW_MS, DURING_DELAY_MS, MANUAL_WINDOW_MS, POLL_STALE_MS, scriptStale, askVision, duringKey, isJpeg, noMarks, parseVerdict, toBase64, wantedFrame } from "../src/camera";
+import { systemFor, AFTER_DELAY_MS, AFTER_WINDOW_MS, DURING_DELAY_MS, MANUAL_WINDOW_MS, POLL_STALE_MS, scriptStale, askVision, duringKey, isJpeg, noMarks, parsePots, parseVerdict, toBase64, wantedFrame } from "../src/camera";
 import { idleState, startRun, defaultConfig } from "../src/plan";
 
 const TZ = "Australia/Melbourne";
@@ -123,5 +123,76 @@ describe("scriptStale", () => {
   it("is a fault once it has been quiet for longer than the limit", () => {
     expect(scriptStale(1000, 1000 + POLL_STALE_MS)).toBe(false);
     expect(scriptStale(1000, 1001 + POLL_STALE_MS)).toBe(true);
+  });
+});
+
+const POTS = JSON.stringify([
+  { name: "Mint", where: "small black pot, right", box: [0.32, 0.4, 0.07, 0.12] },
+  { name: "Lemon tree", where: "big black pot, centre", box: [0.25, 0.36, 0.1, 0.2] },
+]);
+
+describe("parsePots", () => {
+  it("reads the list", () => {
+    expect(parsePots(POTS)).toEqual([
+      { name: "Mint", where: "small black pot, right", box: [0.32, 0.4, 0.07, 0.12] },
+      { name: "Lemon tree", where: "big black pot, centre", box: [0.25, 0.36, 0.1, 0.2] },
+    ]);
+  });
+  it("is empty when nothing is set or it is not JSON, so a typo cannot take the Worker down", () => {
+    expect(parsePots(undefined)).toEqual([]);
+    expect(parsePots("  ")).toEqual([]);
+    expect(parsePots("{not json")).toEqual([]);
+    expect(parsePots('{"name":"Mint"}')).toEqual([]);
+  });
+  it("drops a pot with no name, a repeated name, or a box that is not inside the frame", () => {
+    const bad = JSON.stringify([
+      { name: "", box: [0, 0, 0.1, 0.1] },
+      { name: "Mint", box: [0, 0, 0.1, 0.1] },
+      { name: "mint", box: [0.5, 0.5, 0.1, 0.1] },
+      { name: "Wide", box: [0.5, 0, 0.6, 0.1] },
+      { name: "Flat", box: [0, 0, 0.1, 0] },
+      { name: "Short", box: [0, 0, 0.1] },
+      { name: "Text", box: ["0", 0, 0.1, 0.1] },
+      null,
+    ]);
+    expect(parsePots(bad).map((p) => p.name)).toEqual(["Mint"]);
+  });
+});
+
+describe("pots in the model call", () => {
+  const pots = parsePots(POTS);
+  it("tells the model how to tell the pots apart", () => {
+    expect(systemFor("scene", pots)).toContain("Mint (small black pot, right); Lemon tree (big black pot, centre)");
+    expect(systemFor("scene")).not.toContain("The pots");
+  });
+  it("keeps only notes for pots we listed, once each, spelled our way", () => {
+    const v = parseVerdict(reply({ leak: false, summary: "Fine", pots: [{ pot: "mint", note: " Bushy " }, { pot: "Mint", note: "again" }, { pot: "Cactus", note: "invented" }, { pot: "Lemon tree", note: " " }] }), pots);
+    expect(v.pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+  });
+  it("has no pots in the verdict when none are configured", () => {
+    expect(parseVerdict(reply({ leak: false, summary: "Fine", pots: [{ pot: "Mint", note: "x" }] }))).toEqual({ leak: false, summary: "Fine" });
+  });
+
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const env = { ANTHROPIC_API_KEY: "key", ANTHROPIC_BASE_URL: "https://fake.test", CAMERA_POTS: POTS } as never;
+  const sent = async (kind: "during" | "timelapse" | "manual") => {
+    let body: any;
+    const fake = (async (_u: string, init: RequestInit) => ((body = JSON.parse(init.body as string)), Response.json(reply({ leak: false, summary: "Fine", pots: [{ pot: "Mint", note: "Bushy" }] })))) as never;
+    const verdict = await askVision(env, kind, false, jpeg, fake);
+    return { body, verdict };
+  };
+
+  it("asks for a note per pot on the daily photo and a photo you asked for", async () => {
+    for (const kind of ["timelapse", "manual"] as const) {
+      const { body, verdict } = await sent(kind);
+      expect(body.tools[0].input_schema.properties.pots.items.properties.pot.enum).toEqual(["Mint", "Lemon tree"]);
+      expect(body.system).toContain("small black pot, right");
+      expect(verdict.pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+    }
+  });
+  it("leaves the pots out of a leak check", async () => {
+    const { body, verdict } = await sent("during");
+    expect(body.tools[0].input_schema.properties.pots).toBeUndefined();
+    expect(verdict.pots).toBeUndefined();
   });
 });

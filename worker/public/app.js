@@ -653,18 +653,65 @@ async function act(path, okText) {
 
 /* ───────────────────────── camera ───────────────────────── */
 
-let camera = null; // {latest, leak, days, checks} from /api/camera
+let camera = null; // {latest, leak, days, pots, checks} from /api/camera
 let lapseTimer = null;
+let selectedPot = null; // a pot's name, or null for the whole garden
+let shownDay = null; // the timelapse day on screen, or null for the latest photo
+const FRAME_ASPECT = 16 / 9; // the stills are 1280x720
 
 const KIND = { during: "while watering", after: "after the run", manual: "on request", timelapse: "daily photo" };
+
+// One pot fills the frame: the image is scaled up and shifted so the pot's box lands on the frame. Styles are set through the
+// CSSOM, which the page's CSP allows (it only blocks style attributes in the markup).
+function applyPot() {
+  const pot = camera?.pots.find((p) => p.name === selectedPot);
+  const frame = $("cam-frame");
+  const img = $("cam-img");
+  frame.classList.toggle("crop", Boolean(pot));
+  if (pot) {
+    const [x, y, w, h] = pot.box;
+    frame.style.aspectRatio = `${w * FRAME_ASPECT} / ${h}`;
+    img.style.width = `${100 / w}%`;
+    img.style.left = `${(-x / w) * 100}%`;
+    img.style.top = `${(-y / h) * 100}%`;
+  } else {
+    frame.style.aspectRatio = img.style.width = img.style.left = img.style.top = "";
+  }
+  const day = shownDay && camera?.days.find((d) => d.date === shownDay);
+  const note = pot ? ((day ? day.pots : camera?.latest?.verdict?.pots) ?? []).find((n) => n.pot === pot.name)?.note : "";
+  $("cam-pot-note").hidden = !pot;
+  $("cam-pot-note").textContent = pot ? (note ?? (camera?.checks ? "No note on this plant for this photo." : "Notes need the Anthropic key.")) : "";
+  for (const b of $("cam-pots").children) b.setAttribute("aria-pressed", String((b.dataset.pot || null) === selectedPot));
+}
+
+function renderPotTabs() {
+  const tabs = $("cam-pots");
+  const names = camera.pots.map((p) => p.name);
+  if (selectedPot && !names.includes(selectedPot)) selectedPot = null; // the list changed under us
+  tabs.hidden = !names.length;
+  if (tabs.children.length === names.length + 1 && [...tabs.children].slice(1).every((b, i) => b.dataset.pot === names[i])) return;
+  tabs.replaceChildren(
+    ...[null, ...names].map((name) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pot-tab";
+      b.textContent = name ?? "All";
+      b.dataset.pot = name ?? "";
+      b.onclick = () => { selectedPot = name; applyPot(); };
+      return b;
+    }),
+  );
+}
 
 function renderCamera() {
   const c = camera;
   $("camera").hidden = !c || (!c.latest && !c.days.length);
   if ($("camera").hidden) return;
+  renderPotTabs();
   const f = c.latest;
   $("cam-img").hidden = !f;
   if (f) {
+    shownDay = null;
     $("cam-img").src = `/api/camera/image/latest?t=${f.at}`; // the query changes the URL, so the browser fetches the new photo
     $("cam-when").textContent = `${when(f.at)}, ${KIND[f.kind]}`;
   }
@@ -685,15 +732,18 @@ function renderCamera() {
     $("lapse-date").textContent = c.days.at(Number(r.value))?.date ?? "";
     $("lapse-note").textContent = c.days.at(Number(r.value))?.plant ?? "";
   }
+  applyPot();
 }
 
 function showLapse() {
   const d = camera.days[Number($("lapse-range").value)];
   if (!d) return;
+  shownDay = d.date;
   $("cam-img").src = `/api/camera/image/${d.date}`;
   $("cam-img").hidden = false;
   $("lapse-date").textContent = d.date;
   $("lapse-note").textContent = d.plant ?? "";
+  applyPot();
 }
 
 function playLapse() {

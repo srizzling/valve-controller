@@ -25,7 +25,7 @@ const hostOf = (url: string) => new URL(url).host;
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]).buffer;
 const baseEnv = { TIMEZONE: "Australia/Melbourne", LATITUDE: "-37.81", LONGITUDE: "144.96", NTFY_URL: "https://ntfy.test", NTFY_TOPIC: "t", ANTHROPIC_API_KEY: "k", ANTHROPIC_BASE_URL: "https://claude.test" };
 
-function make(verdict: object | null) {
+function make(verdict: object | null, env: object = {}) {
   const storage = fakeStorage();
   const calls: { url: string; method?: string; headers: Headers }[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
@@ -33,7 +33,7 @@ function make(verdict: object | null) {
     if (hostOf(url) === "claude.test") return verdict ? Response.json({ content: [{ type: "tool_use", name: "report", input: verdict }] }) : new Response("busy", { status: 529 });
     return new Response("ok");
   });
-  const c = new Controller({ storage } as never, baseEnv as never);
+  const c = new Controller({ storage } as never, { ...baseEnv, ...env } as never);
   return { c, storage, calls, ntfy: () => calls.filter((x) => hostOf(x.url) === "ntfy.test") };
 }
 
@@ -83,6 +83,21 @@ describe("Controller camera", () => {
     expect(await c.cameraImage(days[0].date)).toEqual(jpeg);
     expect(await c.cameraWanted()).not.toBe("timelapse");
     expect(await c.cameraImage("../etc")).toBeNull();
+  });
+
+  it("keeps each pot's note with the day, and tells the page where the pots are", async () => {
+    const pots = JSON.stringify([{ name: "Mint", where: "small black pot", box: [0.3, 0.4, 0.1, 0.1] }]);
+    const { c } = make({ leak: false, summary: "Dry", pots: [{ pot: "Mint", note: "Bushy" }] }, { CAMERA_POTS: pots });
+    await c.cameraFrame("timelapse", jpeg);
+    const overview = await c.cameraOverview();
+    expect(overview.days[0].pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+    expect(overview.latest?.verdict?.pots).toEqual([{ pot: "Mint", note: "Bushy" }]);
+    expect(overview.pots.map((p) => p.name)).toEqual(["Mint"]);
+  });
+
+  it("has no pots to show until some are configured", async () => {
+    const { c } = make({ leak: false, summary: "Dry" });
+    expect((await c.cameraOverview()).pots).toEqual([]);
   });
 
   it("asks for a photo after the UI requests one, and stops once it arrives", async () => {

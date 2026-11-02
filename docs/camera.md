@@ -104,10 +104,28 @@ lens a white blur.
 Photos must be JPEG and under 1.5 MB, so shrink them in the command if the camera's native size is bigger
 (`ffmpeg ... -vf scale=1280:-2 -q:v 4`). A camera with an always-on RTSP stream needs nothing more than this.
 
+## One plant at a time
+
+`camera_pots` (in `terraform.tfvars`, as one JSON string) lists the pots in the frame. The Camera card then shows a button per
+pot, and a button shows the photo cropped to that pot, for the latest photo and for every day of the timelapse. The crop is
+done by the browser, so nothing extra is stored. Each pot has a `name`, a `where` that tells it apart from the others for the
+model, and a `box` of `[x, y, width, height]` as fractions of the frame (0 to 1), so the box stays right if the photo size
+changes. Read the numbers off a photo: x and y are the box's top left corner divided by the frame's width and height.
+
+```
+[{"name":"Mint","where":"small black pot, right of the lemon tree","box":[0.322,0.4,0.064,0.125]}]
+```
+
+The daily photo and a photo you ask for also get a one-line note per pot from the model (with the Anthropic key set). Leak
+checks do not, to keep them quick. A box that is not inside the frame, or a repeated name, is dropped.
+
+The boxes assume the camera does not move. If it is knocked or re-aimed, the crops drift until the boxes are redrawn.
+Stills are 1280 pixels wide, so a pot a hundred pixels across is shown at about a third of that detail.
+
 ## What the model is told
 
 The prompt (in `camera.ts`) says what the valve should be doing (open or closed) and asks for a verdict through a forced
-tool call, so the reply is always `{leak, summary, plant?}` or an error, never free text that could be misread as "no
+tool call, so the reply is always `{leak, summary, plant?, pots?}` or an error, never free text that could be misread as "no
 leak". A frame that is dark or unclear is reported as no leak, with the reason in the summary. A model that cannot be
 reached produces no alert, but the UI shows "Not checked" with the reason.
 
