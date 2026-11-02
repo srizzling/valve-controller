@@ -660,8 +660,8 @@ const KIND = { during: "while watering", after: "after the run", manual: "on req
 
 function renderCamera() {
   const c = camera;
-  $("cam").hidden = !c || (!c.latest && !c.days.length);
-  if ($("cam").hidden) return;
+  $("camera").hidden = !c || (!c.latest && !c.days.length);
+  if ($("camera").hidden) return;
   const f = c.latest;
   $("cam-img").hidden = !f;
   if (f) {
