@@ -9,7 +9,7 @@
       "url": "https://github.com/srizzling/valve-controller.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "6c77cc442ca918f66e47a6a4d8fb3a6023958c1b"
+      "revision": "8202f742117b3846093c745daf6189de8debf33d"
     }
   },
   "components": [
@@ -108,20 +108,20 @@
       "sources": [
         {
           "path": "worker/src/controller.ts",
-          "line": 311,
-          "end_line": 357,
+          "line": 352,
+          "end_line": 398,
           "label": "alarm: cycle/soak"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 454,
-          "end_line": 495,
+          "line": 572,
+          "end_line": 613,
           "label": "supervise: one-hour limits"
         },
         {
           "path": "worker/src/controller.ts",
-          "line": 193,
-          "end_line": 250,
+          "line": 208,
+          "end_line": 257,
           "label": "keep a camera frame, check it, alert on a leak"
         }
       ]
@@ -343,7 +343,7 @@
       "id": "claude",
       "type": "cloud",
       "label": "Claude",
-      "sublabel": "reads each photo",
+      "sublabel": "reads photos",
       "pos": [
         1070,
         330
@@ -355,9 +355,21 @@
       "sources": [
         {
           "path": "worker/src/camera.ts",
-          "line": 125,
-          "end_line": 142,
+          "line": 195,
+          "end_line": 214,
           "label": "askVision: forced tool call"
+        },
+        {
+          "path": "worker/src/advisor.ts",
+          "line": 93,
+          "end_line": 110,
+          "label": "askWatering: how many cycles?"
+        },
+        {
+          "path": "worker/src/controller.ts",
+          "line": 507,
+          "end_line": 534,
+          "label": "adviseWatering: photo and weather go in"
         }
       ]
     }
@@ -456,7 +468,7 @@
       "id": "controller-to-claude",
       "from": "controller",
       "to": "claude",
-      "label": "is this a leak?",
+      "label": "leak check, and how much to water",
       "variant": "dashed"
     }
   ],
@@ -511,9 +523,10 @@
       "dot": "amber",
       "title": "The garden camera",
       "items": [
-        "The Worker decides when it wants a photo: 30 seconds into each watering period, a minute after a run, once a day, or on a button press",
+        "The Worker decides when it wants a photo: 30 seconds into each watering period, a minute after a run, six minutes before a scheduled start, once a day, or on a button press",
         "A script on the homelab polls for that, takes one frame from the Eufy camera and posts it, signed in with an Access service token that can reach only those two routes",
         "A Claude model looks at each frame and a leak sends an ntfy alert with the photo; daily frames become a timelapse",
+        "With the Claude check switched on, the pre-run frame goes to a model with the forecast, so it can lower or raise the cycles, or confirm or overrule a skip for rain, wet soil or low demand. Frost and wind limits are never overruled",
         "If the script stops asking for 15 minutes the Worker says so, because leak checks silently stop while it is down"
       ]
     }
