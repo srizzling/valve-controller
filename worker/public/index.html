@@ -312,6 +312,8 @@
         <div class="grid3"><label class="field"><span>Wind above</span><div class="num"><input type="number" id="windMaxKmh" min="5" max="120" inputmode="numeric"><em>km/h</em></div></label></div>
         <label class="switch"><input type="checkbox" id="frostEnabled"><span>Skip when it is cold</span></label>
         <div class="grid3"><label class="field"><span>Colder than</span><div class="num"><input type="number" id="frostBelowC" min="-10" max="10" step="any" inputmode="decimal"><em>°C</em></div></label></div>
+        <label class="switch"><input type="checkbox" id="aiEnabled"><span>Ask Claude before each scheduled run</span></label>
+        <p class="muted small">A few minutes before a scheduled start the camera takes a photo, and Claude looks at it with the weather and when you last watered. It can skip the run, water less, or water more (never above your maximum). It can also overrule a skip for rain, wet soil or low demand when the pots look dry, but only up to your normal cycles. It never overrules the frost or wind limits. If it cannot decide, the plan stands. Needs the camera script and an Anthropic key.</p>
         <div class="actions"><button class="btn btn-primary" type="submit">Save</button></div>
       </form>
     </details>

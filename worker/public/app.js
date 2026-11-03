@@ -468,6 +468,7 @@ function fillForm(c) {
   $("windMaxKmh").value = sm.wind.maxKmh;
   $("frostEnabled").checked = sm.frost.enabled;
   $("frostBelowC").value = sm.frost.belowC;
+  $("aiEnabled").checked = c.ai?.enabled === true;
   schedules = structuredClone(c.schedules);
   renderSchedules();
 }
@@ -659,7 +660,7 @@ let selectedPot = null; // a pot's name, or null for the whole garden
 let shownDay = null; // the timelapse day on screen, or null for the latest photo
 const FRAME_ASPECT = 16 / 9; // the stills are 1280x720
 
-const KIND = { during: "while watering", after: "after the run", manual: "on request", timelapse: "daily photo" };
+const KIND = { during: "while watering", after: "after the run", manual: "on request", timelapse: "daily photo", precheck: "before a run" };
 
 // One pot fills the frame: the image is scaled up and shifted so the pot's box lands on the frame. Styles are set through the
 // CSSOM, which the page's CSP allows (it only blocks style attributes in the markup).
@@ -816,6 +817,7 @@ $("config").onsubmit = async (e) => {
       soilDryBelow: n("soilDryBelow"), soilWetAbove: n("soilWetAbove"),
       wind: { enabled: $("windEnabled").checked, maxKmh: n("windMaxKmh") }, frost: { enabled: $("frostEnabled").checked, belowC: n("frostBelowC") },
     },
+    ai: { enabled: $("aiEnabled").checked },
   };
   try {
     fillForm(await api("/config", { method: "PUT", body: JSON.stringify(config) }));

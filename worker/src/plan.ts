@@ -32,6 +32,11 @@ export interface SmartConfig {
   frost: { enabled: boolean; belowC: number }; // skip when it is colder than this at the start
 }
 
+/** Before each scheduled run, a Claude model looks at a fresh garden photo and the weather and may change the cycle count. */
+export interface AiConfig {
+  enabled: boolean;
+}
+
 export interface Config {
   enabled: boolean;
   onMinutes: number;
@@ -40,6 +45,7 @@ export interface Config {
   schedules: ScheduleEntry[];
   rain: RainConfig;
   smart: SmartConfig;
+  ai: AiConfig;
 }
 
 export interface Place {
@@ -69,6 +75,7 @@ export const defaultConfig: Config = {
     wind: { enabled: true, maxKmh: 30 },
     frost: { enabled: true, belowC: 2 },
   },
+  ai: { enabled: false }, // needs ANTHROPIC_API_KEY and the camera script, so it starts off
 };
 
 /** Fill in anything a saved config predates, so adding a setting never breaks an existing install. */
@@ -164,6 +171,7 @@ export function validateConfig(input: unknown): Config {
       catchUp: r.catchUp !== false,
     },
     smart,
+    ai: { enabled: c.ai.enabled === true },
   };
 }
 

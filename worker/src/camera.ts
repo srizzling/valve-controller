@@ -10,15 +10,18 @@ export type FrameKind =
   | "during" // shortly after the valve opens: is water going where it should?
   | "after" // a minute after a run ends: is anything still flowing?
   | "manual" // asked for from the UI
-  | "timelapse"; // once a day, for the growth timelapse
+  | "timelapse" // once a day, for the growth timelapse
+  | "precheck"; // a few minutes before a scheduled run, for the "is it worth watering?" check
 
-export const FRAME_KINDS: readonly FrameKind[] = ["during", "after", "manual", "timelapse"];
+export const FRAME_KINDS: readonly FrameKind[] = ["during", "after", "manual", "timelapse", "precheck"];
 export const isFrameKind = (s: unknown): s is FrameKind => FRAME_KINDS.includes(s as FrameKind);
 
 export const DURING_DELAY_MS = 30_000; // water has reached the emitters and any fault is visible
 export const AFTER_DELAY_MS = 60_000; // drips have stopped, a stuck-open valve has not
 export const AFTER_WINDOW_MS = 5 * 60_000; // give up on an "after" frame if the camera never answers
 export const MANUAL_WINDOW_MS = 5 * 60_000;
+export const PRECHECK_LEAD_MS = 6 * 60_000; // ask for the pre-run frame this long before a scheduled start
+export const PRECHECK_MAX_AGE_MS = 30 * 60_000; // a pre-run frame older than this is not about this run
 export const MAX_FRAME_BYTES = 1_500_000; // a Durable Object value is capped at 2 MB
 export const DEFAULT_TIMELAPSE_HOUR = 12;
 export const POLL_STALE_MS = 15 * 60_000; // the script asks every ~10 s, so this long without a question means it is down
@@ -82,9 +85,10 @@ export interface CameraMarks {
   timelapseDate: string; // local date of the last timelapse frame
   manualAt: number | null; // when the UI asked for a photo
   alerted: string; // the leak alert already sent, so one fault does not alert on every cycle
+  precheckDone: string; // the scheduled start (epoch ms, as text) whose pre-run frame has arrived
 }
 
-export const noMarks: CameraMarks = { duringDone: "", afterDue: null, timelapseDate: "", manualAt: null, alerted: "" };
+export const noMarks: CameraMarks = { duringDone: "", afterDue: null, timelapseDate: "", manualAt: null, alerted: "", precheckDone: "" };
 
 export const duringKey = (s: RunState) => `${s.startedAt}:${s.cycle}`;
 
@@ -94,12 +98,14 @@ const localHour = (ts: number, timeZone: string) => Number(new Intl.DateTimeForm
  * The frame to capture right now, or null. A leak check comes before the daily frame because it is time critical,
  * and a photo you asked for comes first because you are waiting for it.
  * `daylightEnds` stops the daily frame turning into an infrared shot when the camera was off all afternoon.
+ * `precheckFor` is the scheduled start (epoch ms) that is close enough to want a pre-run frame, or null when the check is off or nothing is near.
  */
-export function wantedFrame(input: { now: number; state: RunState; marks: CameraMarks; timeZone: string; timelapseHour: number; daylightEnds?: number }): FrameKind | null {
+export function wantedFrame(input: { now: number; state: RunState; marks: CameraMarks; timeZone: string; timelapseHour: number; daylightEnds?: number; precheckFor?: number | null }): FrameKind | null {
   const { now, state, marks } = input;
   if (marks.manualAt !== null && now - marks.manualAt < MANUAL_WINDOW_MS) return "manual";
   if (state.phase === "watering" && duringKey(state) !== marks.duringDone && now >= state.phaseStartedAt + DURING_DELAY_MS && now < state.phaseEndsAt - 5_000) return "during";
   if (state.phase === "idle" && marks.afterDue && now >= marks.afterDue.at && now < marks.afterDue.at + AFTER_WINDOW_MS) return "after";
+  if (state.phase === "idle" && input.precheckFor && String(input.precheckFor) !== marks.precheckDone) return "precheck";
   if (localDate(now, input.timeZone) !== marks.timelapseDate && localHour(now, input.timeZone) >= input.timelapseHour && (input.daylightEnds === undefined || now < input.daylightEnds)) return "timelapse";
   return null;
 }
@@ -118,6 +124,7 @@ const CONTEXT: Record<FrameKind, (open: boolean) => string> = {
   after: () => "The watering run finished about a minute ago and the valve is closed. Dripping and wet ground are normal; water still spraying or flowing is not.",
   manual: (open) => (open ? "The valve is open, so water is expected where the hose or emitters are." : "The valve is closed, so no water should be flowing."),
   timelapse: () => "This is the daily photo. The valve is closed, so no water should be flowing.",
+  precheck: () => "This photo was taken a few minutes before a scheduled watering run. The valve is closed, so no water should be flowing.",
 };
 
 const SYSTEM =

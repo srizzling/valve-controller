@@ -137,6 +137,41 @@ tool call, so the reply is always `{leak, summary, plant?, pots?}` or an error, 
 leak". A frame that is dark or unclear is reported as no leak, with the reason in the summary. A model that cannot be
 reached produces no alert, but the UI shows "Not checked" with the reason.
 
+## Asking Claude before a scheduled run
+
+Off until you switch on "Ask Claude before each scheduled run" in Settings. It needs an Anthropic key and the camera script.
+
+About six minutes before a scheduled start the Worker asks the script for one more frame (kind `precheck`). The script needs
+no change: it already posts whatever kind the Worker asks for. When the run starts, a Claude model is shown the photo and
+these facts:
+
+- the planned number of cycles, your normal number, the most it may choose, and the schedule's own reasoning
+- the weather now, today's evapotranspiration, the modelled soil moisture, and rain in the last and next 24 hours
+- the last few runs and how long each watered
+- what the camera said about each plant in the daily photo, and the weekly growth summary
+
+It answers with a number of cycles and a reason. It reviews two kinds of run:
+
+- **A run that is going ahead.** 0 skips it, a lower number waters less, and a higher number waters more, up to your
+  "Never above" percentage of the normal cycles. A skip by Claude shows in the history as skipped for the weather, with a
+  note starting "Claude:", and the alert has the photo attached.
+- **A run the checks would skip for rain, wet soil or low demand.** Those come from a weather model on a grid of roughly
+  10 km, which knows nothing about your pots. A pot under an eave or on a covered deck can be dry in a wet week. Claude
+  can confirm the skip (it stays, with its reason added to the note, and the rain catch-up still happens) or overrule it
+  and water between 1 cycle and your normal number. Overruling never waters more than normal, and sets no catch-up.
+
+The frost and wind limits are never reviewed: a photo cannot tell it how cold it is, so those skips stand, and a rain skip
+that arrives beside one is handled as before. A run you start by hand or by voice is never changed, and neither is the
+rain catch-up later in the day, which has no pre-run frame. The check uses the same `camera_model` as the other checks.
+
+When it cannot decide, the plan stands and the message says why: the model is down or returns something unusable, the key
+is missing, or there is no recent photo. That means the planned cycles for a run that was going ahead, and the skip for one
+that was not. With no pre-run frame (the script is down, say) it uses the latest daily photo if that is from today or
+yesterday, and tells the model how old it is. Otherwise it does not ask.
+
+At dawn and dusk the photo is often dark or infrared, so the model is told to keep the planned number when it cannot judge.
+The weather numbers carry the decision then.
+
 ## Limits
 
 - A slow drip or a small weep will not show up in a camera photo. This catches a burst or detached hose, not a loose

@@ -83,3 +83,10 @@ These gates skip a run. The frost and wind gates apply whatever the scaling says
 Every decision and its reason goes in the ntfy message, the history and the UI. All thresholds are in the UI, and the
 defaults suit pots and beds (normal ET 4.5 mm, plant factor 1). The soil model is on a roughly 10 km grid, so treat it as
 a guide. If the forecast is unavailable, your normal cycles run.
+
+### Asking Claude
+
+Off by default. When it is on, a model looks at a fresh garden photo and the weather before each scheduled run. It can skip the
+run, water less, or water more (never above your maximum). It can also overrule a skip for rain, wet soil or low demand when
+the pots look dry, watering at most your normal cycles. It never overrules the frost or wind limits. If it cannot decide, the
+plan stands. See [the garden camera](camera.md#asking-claude-before-a-scheduled-run).
