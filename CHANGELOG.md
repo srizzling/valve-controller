@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/srizzling/valve-controller/compare/valve-controller-v0.3.0...valve-controller-v0.4.0) (2026-11-03)
+
+
+### Features
+
+* **camera:** ask Claude before a scheduled run ([#23](https://github.com/srizzling/valve-controller/issues/23)) ([4e5bc2f](https://github.com/srizzling/valve-controller/commit/4e5bc2f131cf2d0b11f4f8d4f89cd62dff15bd42))
+* **camera:** per-plant view, plant notes and weekly growth summary ([#21](https://github.com/srizzling/valve-controller/issues/21)) ([ed13993](https://github.com/srizzling/valve-controller/commit/ed1399354de81e19fda79090ed82e49cd8a9652d))
+
+
+### Bug Fixes
+
+* **ui:** show the camera card ([#20](https://github.com/srizzling/valve-controller/issues/20)) ([92dcb99](https://github.com/srizzling/valve-controller/commit/92dcb99514edb391a852b8ad7fa79c7f13976c7c))
+
 ## [0.3.0](https://github.com/srizzling/valve-controller/compare/valve-controller-v0.2.0...valve-controller-v0.3.0) (2026-10-31)
 
 
